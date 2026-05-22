@@ -47,7 +47,7 @@ jobs:
           cache-dependency-path: backend/requirements.txt
 
       - name: Install dependencies
-        run: pip install -r backend/requirements.txt pytest-cov
+        run: pip install -r backend/requirements.txt
 
       - name: Run tests
         env:
