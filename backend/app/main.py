@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
+from app.api.v1 import admin, auth, cart, categories, orders, products, reviews, users
 from app.core.config import settings
 from app.core.database import engine
 from app.core.redis import get_redis_pool
@@ -41,8 +42,6 @@ app.add_middleware(
 )
 
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
-
-from app.api.v1 import auth, products, categories, cart, orders, reviews, users, admin
 
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(products.router, prefix="/api/v1")

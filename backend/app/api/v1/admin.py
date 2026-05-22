@@ -18,7 +18,7 @@ from app.models.order import Order, OrderItem
 from app.models.product import Product
 from app.models.user import User
 from app.schemas.common import MessageResponse, PaginatedResponse
-from app.schemas.order import OrderListResponse, OrderResponse
+from app.schemas.order import OrderResponse
 from app.schemas.product import ProductResponse, ProductUpdate
 from app.schemas.user import UserResponse
 from app.services.search import ElasticsearchService, get_es_client
