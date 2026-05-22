@@ -1,5 +1,7 @@
 # Marketplace
 
+**Last updated: 2026-05-22**
+
 A full-stack e-commerce marketplace built for learning modern web development practices. Buyers browse and purchase products. Sellers list and manage inventory. Admins moderate the platform.
 
 This repository is intentionally straightforward — every decision is practical, every pattern is something you will encounter in real production codebases.
