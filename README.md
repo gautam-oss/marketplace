@@ -674,3 +674,5 @@ GitHub Actions runs on every push to `main` or `develop` and on pull requests to
 | `frontend-build` | TypeScript type check + Vite production build |
 
 A green CI run means: the tests pass, the code is lint-clean, and the frontend compiles. It does not deploy anything — deployment is manual via the production Dockerfiles (`backend/Dockerfile.prod`, `frontend/Dockerfile.prod`).
+
+Last updated: 22 May 2026
