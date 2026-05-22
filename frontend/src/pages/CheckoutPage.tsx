@@ -86,7 +86,7 @@ export default function CheckoutPage() {
   const toast = useToast()
 
   const items = cart?.items ?? []
-  const subtotal = cart?.total ?? 0
+  const subtotal = Number(cart?.total ?? 0)
   const shipping = subtotal > 500 ? 0 : 50
   const gst = Math.round(subtotal * 0.18 * 100) / 100
   const total = subtotal + shipping + gst

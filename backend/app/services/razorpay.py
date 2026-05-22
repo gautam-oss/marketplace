@@ -9,7 +9,7 @@ def get_razorpay_client() -> razorpay.Client:
 
 def create_razorpay_order(amount_paise: int, receipt: str) -> dict:
     client = get_razorpay_client()
-    return client.orders.create({
+    return client.order.create({
         "amount": amount_paise,
         "currency": "INR",
         "receipt": receipt,
