@@ -2,17 +2,23 @@ import { Link, useNavigate } from 'react-router-dom'
 import { ShoppingCart, Store, LogOut, User, LayoutDashboard, Shield } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { useCartStore } from '../store/cartStore'
+import { useNotificationStore } from '../store/notificationStore'
+import { useWebSocket } from '../hooks/useWebSocket'
+import NotificationBell from './NotificationBell'
 import { useQueryClient } from '@tanstack/react-query'
 
 export default function Navbar() {
   const { user, isAuthenticated, logout } = useAuthStore()
   const { cart, clearCart } = useCartStore()
+  const clearNotifications = useNotificationStore((s) => s.clear)
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  useWebSocket()
 
   const handleLogout = () => {
     logout()
     clearCart()
+    clearNotifications()
     queryClient.clear()
     navigate('/login')
   }
@@ -53,6 +59,8 @@ export default function Navbar() {
                     Admin
                   </Link>
                 )}
+
+                <NotificationBell />
 
                 <Link to="/cart" className="relative text-gray-600 hover:text-gray-900">
                   <ShoppingCart size={22} />

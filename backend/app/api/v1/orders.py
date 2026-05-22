@@ -3,6 +3,8 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
+from app.core.websocket import manager as ws_manager
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -186,11 +188,40 @@ async def razorpay_webhook(request: Request, db: AsyncSession = Depends(get_db))
             payment_id=payment_entity.get("id"),
             paid_at=datetime.now(timezone.utc).replace(tzinfo=None),
         )
+        now_iso = datetime.now(timezone.utc).isoformat()
+        short_id = str(order.id)[:8].upper()
+        await ws_manager.send_to_user(str(order.buyer_id), {
+            "type": "order.paid",
+            "order_id": str(order.id),
+            "message": f"Payment confirmed for order #{short_id}!",
+            "timestamp": now_iso,
+        })
+        # Notify each seller whose products are in the order
+        from app.models.product import Product as _Prod
+        from sqlalchemy import select as _sel
+        product_ids = [item.product_id for item in order.items if item.product_id]
+        if product_ids:
+            result = await db.execute(
+                _sel(_Prod.seller_id).where(_Prod.id.in_(product_ids)).distinct()
+            )
+            for seller_id in result.scalars().all():
+                await ws_manager.send_to_user(str(seller_id), {
+                    "type": "order.placed",
+                    "order_id": str(order.id),
+                    "message": f"New order received! #{short_id}",
+                    "timestamp": now_iso,
+                })
         from app.tasks.email_tasks import send_order_confirmation_email
         send_order_confirmation_email.delay(str(order.id))
 
     elif event == "payment.failed" and order.status == "pending":
         await cancel_order(db, order)
+        await ws_manager.send_to_user(str(order.buyer_id), {
+            "type": "order.cancelled",
+            "order_id": str(order.id),
+            "message": f"Payment failed for order #{str(order.id)[:8].upper()}.",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
 
     return {"status": "ok"}
 
@@ -237,7 +268,22 @@ async def update_status(
     elif body.status == "delivered":
         kwargs["delivered_at"] = datetime.now(timezone.utc).replace(tzinfo=None)
 
-    return await update_order_status(db, order, body.status, **kwargs)
+    updated = await update_order_status(db, order, body.status, **kwargs)
+
+    status_messages = {
+        "processing": "Your order is being processed.",
+        "shipped": "Your order has shipped!",
+        "delivered": "Your order has been delivered!",
+    }
+    await ws_manager.send_to_user(str(order.buyer_id), {
+        "type": "order.status_changed",
+        "order_id": str(order.id),
+        "status": body.status,
+        "message": status_messages.get(body.status, f"Order status updated to {body.status}."),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+
+    return updated
 
 
 @router.post("/{order_id}/cancel", response_model=OrderResponse, summary="Cancel a pending order")
@@ -274,5 +320,12 @@ async def cancel_my_order(
         order = await update_order_status(db, order, "refunded")
     else:
         order = await cancel_order(db, order)
+
+    await ws_manager.send_to_user(str(order.buyer_id), {
+        "type": "order.cancelled",
+        "order_id": str(order.id),
+        "message": f"Order #{str(order.id)[:8].upper()} has been cancelled.",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
 
     return order

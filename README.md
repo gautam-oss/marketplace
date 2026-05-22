@@ -1,6 +1,6 @@
 # Marketplace
 
-**Last updated: 2026-05-23** · **v1.0** · **105 tests passing** · **CI green**
+**Last updated: 2026-05-23** · **v1.1** · **108 tests passing** · **CI green**
 
 A full-stack multi-category e-commerce marketplace. Buyers browse and purchase products. Sellers list and manage inventory. Admins moderate the platform.
 
@@ -49,6 +49,7 @@ Every decision in this codebase is practical — the patterns, the trade-offs, a
 
 **Infrastructure**
 - JWT auth with access + refresh tokens and login rate limiting (Redis)
+- WebSocket real-time notifications — order paid, shipped, delivered, cancelled (per-user, JWT-authenticated)
 - Celery background tasks for transactional emails (Resend SDK)
 - Sentry error monitoring
 - GitHub Actions CI: tests + lint + frontend build on every push
@@ -203,16 +204,18 @@ marketplace/
 │   │   │   ├── database.py   # Async engine, session factory
 │   │   │   ├── security.py   # Password hashing, JWT create/decode
 │   │   │   ├── redis.py      # Redis client, cache helpers
-│   │   │   └── deps.py       # get_db, get_current_user, require_role factory
+│   │   │   ├── deps.py       # get_db, get_current_user, require_role factory
+│   │   │   └── websocket.py  # ConnectionManager — in-memory per-user WS registry
 │   │   ├── api/v1/
 │   │   │   ├── auth.py       # Register, login (rate-limited), refresh, logout, /me
 │   │   │   ├── products.py   # CRUD, image upload, Elasticsearch search, Redis cache
 │   │   │   ├── categories.py # Category tree (self-referential)
 │   │   │   ├── cart.py       # Redis-backed cart
-│   │   │   ├── orders.py     # Checkout, webhook, status transitions, cancel+refund
+│   │   │   ├── orders.py     # Checkout, webhook, status transitions, cancel+refund, WS events
 │   │   │   ├── reviews.py    # Product reviews + helpful votes
 │   │   │   ├── users.py      # Public profiles
-│   │   │   └── admin.py      # Platform management: users, products, orders, reviews, stats
+│   │   │   ├── admin.py      # Platform management: users, products, orders, reviews, stats
+│   │   │   └── ws.py         # WebSocket endpoint (JWT via query param, close 4008 on auth fail)
 │   │   ├── models/           # SQLAlchemy ORM (all imported in __init__.py for Alembic)
 │   │   ├── schemas/          # Pydantic v2 request/response shapes
 │   │   ├── crud/             # Async DB query functions (no HTTP concepts)
@@ -230,17 +233,19 @@ marketplace/
 │       │   ├── (buyer)       # Home, ProductList, ProductDetail, Cart, Checkout, Orders
 │       │   ├── seller/       # Dashboard, ProductList, Create/Edit Product
 │       │   └── admin/        # Layout (sidebar), Dashboard, Users, Products, Orders, Reviews
-│       ├── hooks/            # React Query hooks for data fetching
-│       ├── store/            # Zustand: authStore, cartStore
+│       ├── hooks/            # React Query hooks + useWebSocket (auto-reconnect, JWT auth)
+│       ├── store/            # Zustand: authStore, cartStore, notificationStore
+│       ├── components/       # Navbar (with NotificationBell), Footer, Pagination, Toast…
 │       └── types/            # TypeScript interfaces mirroring all backend schemas
-├── tests/                    # Run from project root — 105 tests, all passing
+├── tests/                    # Run from project root — 108 tests, all passing
 │   ├── conftest.py           # Fixtures: async_client, test_db, buyer/seller/admin tokens
 │   ├── test_auth.py
 │   ├── test_products.py
 │   ├── test_orders.py
 │   ├── test_cart.py
 │   ├── test_categories.py
-│   └── test_order_status.py
+│   ├── test_order_status.py
+│   └── test_websocket.py     # WS: valid token connects, invalid/missing token rejected
 ├── .github/workflows/ci.yml
 ├── docker-compose.yml
 ├── Dockerfile.prod (frontend)
@@ -436,6 +441,28 @@ All admin routes require `role=admin`.
 | GET | `/admin/reviews` | All reviews, filterable by min_rating |
 | DELETE | `/admin/reviews/{id}` | Delete any review |
 
+### WebSocket
+
+```
+ws://localhost:8000/api/v1/ws?token=<access_token>
+```
+
+Connect with a valid JWT access token. The server sends JSON events in real time:
+
+| Event type | Who receives it | When |
+|---|---|---|
+| `order.paid` | Buyer | `payment.captured` webhook fired |
+| `order.placed` | Each seller in the order | Same webhook |
+| `order.status_changed` | Buyer | Order advanced to processing / shipped / delivered |
+| `order.cancelled` | Buyer | Order cancelled or payment failed |
+
+Event shape:
+```json
+{ "type": "order.paid", "order_id": "uuid", "message": "Payment confirmed for order #ABCD1234!", "timestamp": "2026-05-23T..." }
+```
+
+Frontend behaviour: `useWebSocket` hook (initialized in Navbar) auto-reconnects with exponential backoff (up to 5 retries, max 30s). On each event: toast notification shown, `NotificationBell` unread count incremented, React Query cache invalidated for affected order.
+
 ### Pagination
 
 All list endpoints return:
@@ -538,7 +565,7 @@ backend\.venv\Scripts\python.exe -m pytest tests/ -q --cov=app --cov-report=term
 backend\.venv\Scripts\python.exe -m pytest tests/test_auth.py -v --tb=short
 ```
 
-**Status: 105 tests, all passing.**
+**Status: 108 tests, all passing.**
 
 Every test gets a clean database — `conftest.py` truncates all tables after each test. Fixtures provide everything needed:
 
@@ -651,7 +678,7 @@ GitHub Actions runs on every push to `main` or `develop` and on all pull request
 
 | Job | What it does |
 |---|---|
-| `backend-test` | Spins up PostgreSQL + Redis, installs deps, runs 105 pytest tests |
+| `backend-test` | Spins up PostgreSQL + Redis, installs deps, runs 108 pytest tests |
 | `backend-lint` | Runs ruff (E, W, F rules, ignores E501) |
 | `frontend-build` | TypeScript type check + Vite production build |
 
