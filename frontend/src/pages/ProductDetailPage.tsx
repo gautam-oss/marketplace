@@ -13,11 +13,11 @@ import LoadingSpinner from '../components/LoadingSpinner'
 function RatingSummaryBars({
   average,
   total,
-  distribution,
+  breakdown,
 }: {
   average: number
   total: number
-  distribution: Record<string, number>
+  breakdown: Record<number, number>
 }) {
   return (
     <div className="flex gap-6">
@@ -28,7 +28,7 @@ function RatingSummaryBars({
       </div>
       <div className="flex-1 space-y-1.5">
         {[5, 4, 3, 2, 1].map((star) => {
-          const count = distribution[String(star)] ?? 0
+          const count = breakdown[star] ?? 0
           const pct = total > 0 ? (count / total) * 100 : 0
           return (
             <div key={star} className="flex items-center gap-2 text-sm">
@@ -52,14 +52,14 @@ function ReviewCard({
   review,
   currentUserId,
 }: {
-  review: { id: string; reviewer_id: string; reviewer?: { full_name: string | null }; rating: number; title: string | null; body: string | null; is_verified_purchase: boolean; helpful_count: number; created_at: string }
+  review: { id: string; user: { id: string; full_name: string | null; avatar_url: string | null }; rating: number; title: string | null; body: string | null; is_verified_purchase: boolean; helpful_count: number; created_at: string }
   currentUserId?: string
 }) {
   const { mutate: markHelpful, isPending } = useMarkReviewHelpful()
   const toast = useToast()
 
-  const initials = review.reviewer?.full_name
-    ? review.reviewer.full_name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
+  const initials = review.user?.full_name
+    ? review.user.full_name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
     : '?'
 
   const handleHelpful = () => {
@@ -78,7 +78,7 @@ function ReviewCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-gray-900 text-sm">
-              {review.reviewer?.full_name ?? 'Anonymous'}
+              {review.user?.full_name ?? 'Anonymous'}
             </span>
             {review.is_verified_purchase && (
               <span className="flex items-center gap-1 text-xs text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
@@ -226,7 +226,7 @@ export default function ProductDetailPage() {
   }
 
   const canReview = isAuthenticated && user?.role === 'buyer'
-  const hasReviewed = reviewData?.reviews.items.some((r) => r.reviewer_id === user?.id)
+  const hasReviewed = reviewData?.reviews.items.some((r) => r.user?.id === user?.id)
   const totalReviews = reviewData?.reviews.total ?? 0
 
   return (
@@ -288,7 +288,7 @@ export default function ProductDetailPage() {
 
           <p className="text-sm text-gray-500 mt-1">
             by{' '}
-            <Link to={`/products?seller=${product.seller_id}`} className="text-indigo-600 hover:underline">
+            <Link to={`/products?seller=${product.seller?.id}`} className="text-indigo-600 hover:underline">
               {product.seller?.full_name ?? 'Seller'}
             </Link>
           </p>
@@ -383,7 +383,7 @@ export default function ProductDetailPage() {
             <RatingSummaryBars
               average={reviewData.rating_summary.average}
               total={reviewData.rating_summary.total}
-              distribution={reviewData.rating_summary.distribution}
+              breakdown={reviewData.rating_summary.breakdown}
             />
           </div>
         )}

@@ -57,18 +57,18 @@ export interface ProductListItem {
   stock: number;
   status: 'draft' | 'active' | 'archived';
   images: string[];
-  category_id: string | null;
-  seller_id: string;
+  seller: UserPublic;
   average_rating: number;
   review_count: number;
-  created_at: string;
 }
 
 export interface ProductResponse extends ProductListItem {
   description: string | null;
+  sku: string | null;
   tags: string[];
   category: CategoryResponse | null;
-  seller: UserPublic;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ProductCreate {
@@ -93,10 +93,10 @@ export interface ProductUpdate {
 
 export interface ProductFilters {
   q?: string;
-  category_id?: string;
+  category?: string;
+  seller_id?: string;
   min_price?: number;
   max_price?: number;
-  min_rating?: number;
   page?: number;
   per_page?: number;
   sort?: string;
@@ -105,13 +105,13 @@ export interface ProductFilters {
 // ── Orders ────────────────────────────────────────────────────────────────────
 
 export interface ShippingAddress {
-  full_name?: string;
-  phone?: string;
+  full_name: string;
+  phone: string;
   line1: string;
   line2?: string;
   city: string;
   state: string;
-  postal_code: string;
+  pincode: string;
   country: string;
 }
 
@@ -123,6 +123,7 @@ export interface OrderItemCreate {
 export interface OrderCreate {
   items: OrderItemCreate[];
   shipping_address: ShippingAddress;
+  notes?: string;
 }
 
 export interface OrderItemResponse {
@@ -155,6 +156,7 @@ export interface OrderResponse {
   shipping_amount: number;
   total: number;
   shipping_address: ShippingAddress;
+  notes: string | null;
   razorpay_order_id: string | null;
   razorpay_payment_id: string | null;
   paid_at: string | null;
@@ -163,10 +165,18 @@ export interface OrderResponse {
   created_at: string;
 }
 
+export interface OrderListItem {
+  id: string;
+  status: OrderStatus;
+  total: number;
+  items: OrderItemResponse[];
+  created_at: string;
+}
+
 export interface CheckoutResponse {
   order_id: string;
   razorpay_order_id: string;
-  amount_paise: number;
+  amount: number;
   currency: string;
   razorpay_key_id: string;
 }
@@ -176,12 +186,13 @@ export interface CheckoutResponse {
 export interface CartItem {
   product_id: string;
   quantity: number;
-  product: ProductListItem | null;
+  product: ProductListItem;
+  subtotal: number;
 }
 
 export interface CartResponse {
   items: CartItem[];
-  subtotal: number;
+  total: number;
   item_count: number;
 }
 
@@ -189,21 +200,19 @@ export interface CartResponse {
 
 export interface ReviewResponse {
   id: string;
-  product_id: string;
-  reviewer_id: string;
-  reviewer?: UserPublic;
   rating: number;
   title: string | null;
   body: string | null;
   is_verified_purchase: boolean;
   helpful_count: number;
+  user: UserPublic;
   created_at: string;
 }
 
 export interface RatingSummary {
   average: number;
   total: number;
-  distribution: Record<string, number>;
+  breakdown: Record<number, number>;
 }
 
 export interface ReviewListResponse {

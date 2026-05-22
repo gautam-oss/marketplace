@@ -1,8 +1,8 @@
 import apiClient from './client'
-import type { OrderResponse, OrderCreate, CheckoutResponse, PaginatedResponse, MessageResponse } from '../types'
+import type { OrderListItem, OrderResponse, OrderCreate, CheckoutResponse, PaginatedResponse, MessageResponse } from '../types'
 
-export const getOrders = async (page = 1, per_page = 20): Promise<PaginatedResponse<OrderResponse>> => {
-  const { data } = await apiClient.get<PaginatedResponse<OrderResponse>>('/api/v1/orders', {
+export const getOrders = async (page = 1, per_page = 20): Promise<PaginatedResponse<OrderListItem>> => {
+  const { data } = await apiClient.get<PaginatedResponse<OrderListItem>>('/api/v1/orders', {
     params: { page, per_page },
   })
   return data

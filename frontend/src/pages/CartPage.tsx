@@ -24,7 +24,7 @@ export default function CartPage() {
     )
   }
 
-  const subtotal = cart.subtotal
+  const subtotal = cart.total
   const shipping = subtotal > 500 ? 0 : 50
   const gst = Math.round(subtotal * 0.18 * 100) / 100
   const grandTotal = subtotal + shipping + gst

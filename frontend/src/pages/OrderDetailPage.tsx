@@ -75,7 +75,7 @@ export default function OrderDetailPage() {
         <address className="not-italic text-sm text-gray-600 space-y-1">
           <p>{order.shipping_address.line1}</p>
           {order.shipping_address.line2 && <p>{order.shipping_address.line2}</p>}
-          <p>{order.shipping_address.city}, {order.shipping_address.state} {order.shipping_address.postal_code}</p>
+          <p>{order.shipping_address.city}, {order.shipping_address.state} {order.shipping_address.pincode}</p>
           <p>{order.shipping_address.country}</p>
         </address>
       </div>

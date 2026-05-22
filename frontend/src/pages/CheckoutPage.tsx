@@ -86,7 +86,7 @@ export default function CheckoutPage() {
   const toast = useToast()
 
   const items = cart?.items ?? []
-  const subtotal = cart?.subtotal ?? 0
+  const subtotal = cart?.total ?? 0
   const shipping = subtotal > 500 ? 0 : 50
   const gst = Math.round(subtotal * 0.18 * 100) / 100
   const total = subtotal + shipping + gst
@@ -111,14 +111,14 @@ export default function CheckoutPage() {
           line2: address.line2 || undefined,
           city: address.city,
           state: address.state,
-          postal_code: address.pincode,
+          pincode: address.pincode,
           country: address.country,
         },
       })
 
       const rzp = new window.Razorpay({
         key: result.razorpay_key_id,
-        amount: result.amount_paise,
+        amount: result.amount,
         currency: result.currency,
         name: 'Marketplace',
         description: `Order #${result.order_id.slice(0, 8).toUpperCase()}`,
