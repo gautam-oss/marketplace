@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     # Resend email
     RESEND_API_KEY: str
     EMAIL_FROM: str = "onboarding@resend.dev"
+    # In Resend test mode, only the account owner's address can receive mail.
+    # Set this to redirect all outgoing emails to one address during development.
+    TEST_EMAIL_OVERRIDE: str = ""
 
     # AWS S3
     AWS_ACCESS_KEY_ID: str
