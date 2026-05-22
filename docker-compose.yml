@@ -52,6 +52,10 @@ services:
     ports:
       - "8000:8000"
     env_file: .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql+asyncpg://marketplace:marketplace@postgres:5432/marketplace
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
     depends_on:
       postgres:
         condition: service_healthy
@@ -66,9 +70,14 @@ services:
   celery_worker:
     build: ./backend
     env_file: .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql+asyncpg://marketplace:marketplace@postgres:5432/marketplace
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     command: celery -A app.tasks.celery_app worker -l info --concurrency 2
     volumes:
       - ./backend:/app
