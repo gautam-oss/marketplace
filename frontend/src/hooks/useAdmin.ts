@@ -6,6 +6,8 @@ import {
   adminListProducts,
   adminUpdateProductStatus,
   adminListOrders,
+  adminUpdateOrderStatus,
+  adminCancelOrder,
   adminDeleteReview,
 } from '../api/admin'
 
@@ -53,6 +55,29 @@ export function useAdminOrders(page = 1, per_page = 20, status?: string) {
   return useQuery({
     queryKey: ['admin-orders', page, per_page, status],
     queryFn: () => adminListOrders(page, per_page, status),
+  })
+}
+
+export function useAdminUpdateOrderStatus() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ order_id, status }: { order_id: string; status: string }) =>
+      adminUpdateOrderStatus(order_id, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-orders'] })
+      queryClient.invalidateQueries({ queryKey: ['admin-stats'] })
+    },
+  })
+}
+
+export function useAdminCancelOrder() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (order_id: string) => adminCancelOrder(order_id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-orders'] })
+      queryClient.invalidateQueries({ queryKey: ['admin-stats'] })
+    },
   })
 }
 

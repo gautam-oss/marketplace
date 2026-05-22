@@ -68,6 +68,24 @@ export const adminListOrders = async (
   return data
 }
 
+export const adminUpdateOrderStatus = async (
+  order_id: string,
+  status: string
+): Promise<OrderResponse> => {
+  const { data } = await apiClient.patch<OrderResponse>(
+    `/api/v1/orders/${order_id}/status`,
+    { status }
+  )
+  return data
+}
+
+export const adminCancelOrder = async (order_id: string): Promise<OrderResponse> => {
+  const { data } = await apiClient.post<OrderResponse>(
+    `/api/v1/orders/${order_id}/cancel`
+  )
+  return data
+}
+
 export const adminDeleteReview = async (review_id: string): Promise<MessageResponse> => {
   const { data } = await apiClient.delete<MessageResponse>(
     `/api/v1/admin/reviews/${review_id}`
