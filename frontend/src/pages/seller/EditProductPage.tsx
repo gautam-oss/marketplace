@@ -38,7 +38,7 @@ export default function EditProductPage() {
       setForm({
         title: product.title,
         description: product.description ?? '',
-        category_id: product.category_id ?? '',
+        category_id: product.category?.id ?? '',
         tags: product.tags ?? [],
         price: String(product.price),
         compare_at_price: product.compare_at_price ? String(product.compare_at_price) : '',

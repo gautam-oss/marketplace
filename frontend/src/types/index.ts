@@ -97,6 +97,7 @@ export interface ProductFilters {
   seller_id?: string;
   min_price?: number;
   max_price?: number;
+  min_rating?: number;
   page?: number;
   per_page?: number;
   sort?: string;

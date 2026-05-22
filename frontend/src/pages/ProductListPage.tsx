@@ -204,7 +204,7 @@ export default function ProductListPage() {
 
   const { data: products, isLoading } = useProducts({
     q: q || undefined,
-    category_id: categoryId,
+    category: categoryId,
     min_price: minPrice,
     max_price: maxPrice,
     min_rating: minRating ? Number(minRating) : undefined,
