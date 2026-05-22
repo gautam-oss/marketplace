@@ -196,10 +196,11 @@ async def admin_stats(db: AsyncSession = Depends(get_db)):
         orders_by_status[s] = cnt
 
     def _rev_q(start, end):
+        date_col = func.coalesce(Order.paid_at, Order.created_at)
         return select(func.coalesce(func.sum(Order.total), 0)).where(
             Order.status == "paid",
-            Order.paid_at >= start,
-            Order.paid_at < end,
+            date_col >= start,
+            date_col < end,
         )
 
     revenue_this_month = float(
