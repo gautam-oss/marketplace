@@ -40,7 +40,7 @@ async def _reindex_product(db: AsyncSession, product_id: uuid.UUID) -> None:
         pass
 
 
-@product_reviews_router.get("/{product_id}/reviews", response_model=ReviewListResponse)
+@product_reviews_router.get("/{product_id}/reviews", response_model=ReviewListResponse, summary="List reviews for a product")
 async def get_product_reviews(
     product_id: uuid.UUID,
     page: int = Query(1, ge=1),
@@ -64,6 +64,7 @@ async def get_product_reviews(
     "/{product_id}/reviews",
     response_model=ReviewResponse,
     status_code=status.HTTP_201_CREATED,
+    summary="Submit a product review (one per buyer per product)",
 )
 async def create_product_review(
     product_id: uuid.UUID,
@@ -100,7 +101,7 @@ async def create_product_review(
     return review
 
 
-@product_reviews_router.put("/{product_id}/reviews/{review_id}", response_model=ReviewResponse)
+@product_reviews_router.put("/{product_id}/reviews/{review_id}", response_model=ReviewResponse, summary="Edit your review")
 async def update_product_review(
     product_id: uuid.UUID,
     review_id: uuid.UUID,
@@ -124,7 +125,7 @@ async def update_product_review(
     return updated
 
 
-@product_reviews_router.delete("/{product_id}/reviews/{review_id}", response_model=MessageResponse)
+@product_reviews_router.delete("/{product_id}/reviews/{review_id}", response_model=MessageResponse, summary="Delete a review (owner or admin)")
 async def delete_product_review(
     product_id: uuid.UUID,
     review_id: uuid.UUID,
@@ -147,7 +148,7 @@ async def delete_product_review(
     return MessageResponse(message="Review deleted")
 
 
-@reviews_router.post("/{review_id}/helpful", response_model=MessageResponse)
+@reviews_router.post("/{review_id}/helpful", response_model=MessageResponse, summary="Mark a review as helpful")
 async def mark_helpful(
     review_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),

@@ -27,6 +27,7 @@ import AdminDashboardPage from './pages/admin/AdminDashboardPage'
 import AdminUsersPage from './pages/admin/AdminUsersPage'
 import AdminProductsPage from './pages/admin/AdminProductsPage'
 import AdminOrdersPage from './pages/admin/AdminOrdersPage'
+import AdminReviewsPage from './pages/admin/AdminReviewsPage'
 
 function Layout() {
   return (
@@ -84,6 +85,7 @@ const router = createBrowserRouter([
               { path: '/admin/users', element: <AdminUsersPage /> },
               { path: '/admin/products', element: <AdminProductsPage /> },
               { path: '/admin/orders', element: <AdminOrdersPage /> },
+              { path: '/admin/reviews', element: <AdminReviewsPage /> },
             ],
           },
         ],

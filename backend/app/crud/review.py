@@ -107,6 +107,24 @@ async def delete_review(db: AsyncSession, review_id: uuid.UUID) -> bool:
     return True
 
 
+async def list_reviews_all(
+    db: AsyncSession,
+    page: int = 1,
+    per_page: int = 20,
+    min_rating: int | None = None,
+) -> tuple[list[Review], int]:
+    query = select(Review).options(
+        selectinload(Review.user),
+        selectinload(Review.product),
+    )
+    if min_rating is not None:
+        query = query.where(Review.rating >= min_rating)
+    query = query.order_by(Review.created_at.desc())
+    total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one()
+    items = (await db.execute(query.offset((page - 1) * per_page).limit(per_page))).scalars().all()
+    return list(items), total
+
+
 async def increment_helpful(db: AsyncSession, review_id: uuid.UUID) -> Review | None:
     await db.execute(
         update(Review).where(Review.id == review_id).values(helpful_count=Review.helpful_count + 1)

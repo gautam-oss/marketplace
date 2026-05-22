@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { LayoutDashboard, Users, Package, ShoppingCart, Menu, X, Store } from 'lucide-react'
+import { LayoutDashboard, Users, Package, ShoppingCart, Star, Menu, X, Store } from 'lucide-react'
 
 const NAV = [
   { to: '/admin', label: 'Dashboard', icon: <LayoutDashboard size={18} />, end: true },
   { to: '/admin/users', label: 'Users', icon: <Users size={18} /> },
   { to: '/admin/products', label: 'Products', icon: <Package size={18} /> },
   { to: '/admin/orders', label: 'Orders', icon: <ShoppingCart size={18} /> },
+  { to: '/admin/reviews', label: 'Reviews', icon: <Star size={18} /> },
 ]
 
 function Sidebar({ onClose }: { onClose?: () => void }) {

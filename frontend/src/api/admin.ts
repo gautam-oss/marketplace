@@ -4,6 +4,7 @@ import type {
   User,
   ProductListItem,
   OrderResponse,
+  ReviewAdmin,
   PaginatedResponse,
   MessageResponse,
 } from '../types'
@@ -82,6 +83,18 @@ export const adminUpdateOrderStatus = async (
 export const adminCancelOrder = async (order_id: string): Promise<OrderResponse> => {
   const { data } = await apiClient.post<OrderResponse>(
     `/api/v1/orders/${order_id}/cancel`
+  )
+  return data
+}
+
+export const adminListReviews = async (
+  page = 1,
+  per_page = 20,
+  min_rating?: number
+): Promise<PaginatedResponse<ReviewAdmin>> => {
+  const { data } = await apiClient.get<PaginatedResponse<ReviewAdmin>>(
+    '/api/v1/admin/reviews',
+    { params: { page, per_page, min_rating } }
   )
   return data
 }

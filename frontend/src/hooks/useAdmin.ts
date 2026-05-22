@@ -8,6 +8,7 @@ import {
   adminListOrders,
   adminUpdateOrderStatus,
   adminCancelOrder,
+  adminListReviews,
   adminDeleteReview,
 } from '../api/admin'
 
@@ -81,10 +82,20 @@ export function useAdminCancelOrder() {
   })
 }
 
+export function useAdminReviews(page = 1, per_page = 20, min_rating?: number) {
+  return useQuery({
+    queryKey: ['admin-reviews', page, per_page, min_rating],
+    queryFn: () => adminListReviews(page, per_page, min_rating),
+  })
+}
+
 export function useAdminDeleteReview() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (review_id: string) => adminDeleteReview(review_id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-stats'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-reviews'] })
+      queryClient.invalidateQueries({ queryKey: ['admin-stats'] })
+    },
   })
 }

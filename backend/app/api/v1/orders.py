@@ -43,7 +43,7 @@ class _StatusBody(BaseModel):
     status: str
 
 
-@router.get("", response_model=PaginatedResponse[OrderListResponse])
+@router.get("", response_model=PaginatedResponse[OrderListResponse], summary="List my orders (buyer sees own; seller sees orders for their products)")
 async def list_my_orders(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
@@ -62,7 +62,7 @@ async def list_my_orders(
     )
 
 
-@router.get("/{order_id}", response_model=OrderResponse)
+@router.get("/{order_id}", response_model=OrderResponse, summary="Get order detail")
 async def get_my_order(
     order_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -76,7 +76,7 @@ async def get_my_order(
     return order
 
 
-@router.post("/checkout", response_model=CheckoutResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/checkout", response_model=CheckoutResponse, status_code=status.HTTP_201_CREATED, summary="Create order and Razorpay payment from cart")
 async def checkout(
     data: OrderCreate,
     db: AsyncSession = Depends(get_db),
@@ -160,7 +160,7 @@ async def checkout(
     )
 
 
-@router.post("/webhook")
+@router.post("/webhook", summary="Razorpay payment webhook (signature verified, no auth required)")
 async def razorpay_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     body = await request.body()
     signature = request.headers.get("X-Razorpay-Signature", "")
@@ -195,7 +195,7 @@ async def razorpay_webhook(request: Request, db: AsyncSession = Depends(get_db))
     return {"status": "ok"}
 
 
-@router.patch("/{order_id}/status", response_model=OrderResponse)
+@router.patch("/{order_id}/status", response_model=OrderResponse, summary="Advance order status (seller or admin)")
 async def update_status(
     order_id: uuid.UUID,
     body: _StatusBody,
@@ -240,7 +240,7 @@ async def update_status(
     return await update_order_status(db, order, body.status, **kwargs)
 
 
-@router.post("/{order_id}/cancel", response_model=OrderResponse)
+@router.post("/{order_id}/cancel", response_model=OrderResponse, summary="Cancel a pending order")
 async def cancel_my_order(
     order_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),

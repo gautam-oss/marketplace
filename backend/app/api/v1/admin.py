@@ -12,7 +12,7 @@ from app.core.database import get_db
 from app.core.deps import require_role
 from app.core.redis import cache_delete, cache_delete_pattern
 from app.crud.product import get_product_by_id, list_products, update_product
-from app.crud.review import delete_review, get_review_by_id
+from app.crud.review import delete_review, get_review_by_id, list_reviews_all
 from app.crud.user import get_user_by_id, list_users
 from app.models.order import Order, OrderItem
 from app.models.product import Product
@@ -20,6 +20,7 @@ from app.models.user import User
 from app.schemas.common import MessageResponse, PaginatedResponse
 from app.schemas.order import OrderResponse
 from app.schemas.product import ProductResponse, ProductUpdate
+from app.schemas.review import ReviewAdminResponse
 from app.schemas.user import UserResponse
 from app.services.search import ElasticsearchService, get_es_client
 
@@ -38,6 +39,7 @@ class _StatusBody(BaseModel):
 # ── Users ─────────────────────────────────────────────────────────────────────
 
 @router.get("/users", response_model=PaginatedResponse[UserResponse],
+            summary="List all users",
             dependencies=[Depends(require_role("admin"))])
 async def admin_list_users(
     page: int = Query(1, ge=1),
@@ -54,7 +56,7 @@ async def admin_list_users(
     )
 
 
-@router.patch("/users/{user_id}", response_model=UserResponse)
+@router.patch("/users/{user_id}", response_model=UserResponse, summary="Update user role or active status")
 async def admin_update_user(
     user_id: uuid.UUID,
     data: _UserAdminUpdate,
@@ -81,6 +83,7 @@ async def admin_update_user(
 # ── Products ──────────────────────────────────────────────────────────────────
 
 @router.get("/products", response_model=PaginatedResponse[ProductResponse],
+            summary="List all products (all statuses)",
             dependencies=[Depends(require_role("admin"))])
 async def admin_list_products(
     page: int = Query(1, ge=1),
@@ -102,6 +105,7 @@ async def admin_list_products(
 
 
 @router.patch("/products/{product_id}/status", response_model=ProductResponse,
+              summary="Change a product's status",
               dependencies=[Depends(require_role("admin"))])
 async def admin_update_product_status(
     product_id: uuid.UUID,
@@ -125,6 +129,7 @@ async def admin_update_product_status(
 # ── Orders ────────────────────────────────────────────────────────────────────
 
 @router.get("/orders", response_model=PaginatedResponse[OrderResponse],
+            summary="List all orders with filters",
             dependencies=[Depends(require_role("admin"))])
 async def admin_list_orders(
     page: int = Query(1, ge=1),
@@ -159,7 +164,7 @@ async def admin_list_orders(
 
 # ── Stats ─────────────────────────────────────────────────────────────────────
 
-@router.get("/stats", dependencies=[Depends(require_role("admin"))])
+@router.get("/stats", summary="Platform statistics (users, orders, revenue)", dependencies=[Depends(require_role("admin"))])
 async def admin_stats(db: AsyncSession = Depends(get_db)):
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -226,7 +231,25 @@ async def admin_stats(db: AsyncSession = Depends(get_db)):
 
 # ── Reviews ───────────────────────────────────────────────────────────────────
 
+@router.get("/reviews", response_model=PaginatedResponse[ReviewAdminResponse],
+            summary="List all reviews",
+            dependencies=[Depends(require_role("admin"))])
+async def admin_list_reviews(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    min_rating: Optional[int] = Query(None, ge=1, le=5),
+    db: AsyncSession = Depends(get_db),
+):
+    items, total = await list_reviews_all(db, page=page, per_page=per_page, min_rating=min_rating)
+    pages = (total + per_page - 1) // per_page
+    return PaginatedResponse(
+        items=[ReviewAdminResponse.model_validate(r) for r in items],
+        total=total, page=page, per_page=per_page, pages=pages,
+    )
+
+
 @router.delete("/reviews/{review_id}", response_model=MessageResponse,
+               summary="Delete any review",
                dependencies=[Depends(require_role("admin"))])
 async def admin_delete_review(
     review_id: uuid.UUID,

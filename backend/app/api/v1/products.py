@@ -29,6 +29,7 @@ from app.services.storage import upload_image
 router = APIRouter(prefix="/products", tags=["products"])
 
 MAX_IMAGES = 5
+MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB
 
 _SORT_BY = {"newest": "created_at", "price_asc": "price", "price_desc": "price", "rating": "created_at"}
 _SORT_ORDER = {"newest": "desc", "price_asc": "asc", "price_desc": "desc", "rating": "desc"}
@@ -55,7 +56,7 @@ async def _invalidate_product_cache(slug: str) -> None:
     await cache_delete_pattern("products:list:*")
 
 
-@router.get("/my", response_model=PaginatedResponse[ProductListResponse])
+@router.get("/my", response_model=PaginatedResponse[ProductListResponse], summary="List the seller's own products")
 async def get_my_products(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
@@ -75,7 +76,7 @@ async def get_my_products(
     )
 
 
-@router.get("", response_model=PaginatedResponse[ProductListResponse])
+@router.get("", response_model=PaginatedResponse[ProductListResponse], summary="List active products with filtering and search")
 async def get_products(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
@@ -145,7 +146,7 @@ async def get_products(
     return response
 
 
-@router.get("/{slug}", response_model=ProductResponse)
+@router.get("/{slug}", response_model=ProductResponse, summary="Get product detail by slug")
 async def get_product(slug: str, db: AsyncSession = Depends(get_db)):
     cache_key = f"products:slug:{slug}"
     cached = await cache_get(cache_key)
@@ -165,7 +166,7 @@ async def get_product(slug: str, db: AsyncSession = Depends(get_db)):
     return response
 
 
-@router.post("", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ProductResponse, status_code=status.HTTP_201_CREATED, summary="Create a new product (sellers only)")
 async def create_new_product(
     title: Annotated[str, Form(min_length=3)],
     price: Annotated[Decimal, Form(gt=0)],
@@ -181,6 +182,16 @@ async def create_new_product(
 ):
     if len(images) > MAX_IMAGES:
         raise HTTPException(status_code=400, detail=f"Maximum {MAX_IMAGES} images allowed")
+
+    for img_file in images:
+        if img_file.filename:
+            content = await img_file.read()
+            if len(content) > MAX_IMAGE_BYTES:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Image '{img_file.filename}' exceeds the 5 MB limit",
+                )
+            await img_file.seek(0)
 
     # Parse tags: accept JSON array string or comma-separated
     parsed_tags: list[str] = []
@@ -213,7 +224,7 @@ async def create_new_product(
     return product
 
 
-@router.put("/{product_id}", response_model=ProductResponse)
+@router.put("/{product_id}", response_model=ProductResponse, summary="Update product details")
 async def update_existing_product(
     product_id: uuid.UUID,
     data: ProductUpdate,
@@ -232,7 +243,7 @@ async def update_existing_product(
     return updated
 
 
-@router.patch("/{product_id}/status", response_model=ProductResponse)
+@router.patch("/{product_id}/status", response_model=ProductResponse, summary="Change product status (draft / active / archived)")
 async def update_product_status(
     product_id: uuid.UUID,
     data: _StatusBody,
@@ -266,7 +277,7 @@ async def update_product_status(
     return updated
 
 
-@router.delete("/{product_id}", response_model=MessageResponse)
+@router.delete("/{product_id}", response_model=MessageResponse, summary="Soft-delete a product")
 async def delete_existing_product(
     product_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),

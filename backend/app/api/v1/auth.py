@@ -15,7 +15,7 @@ _MAX_LOGIN_ATTEMPTS = 5
 _LOGIN_WINDOW_SECONDS = 60
 
 
-@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED, summary="Register a new buyer account")
 async def register(data: UserCreate, db: AsyncSession = Depends(get_db)):
     existing = await get_user_by_email(db, data.email)
     if existing:
@@ -28,7 +28,7 @@ async def register(data: UserCreate, db: AsyncSession = Depends(get_db)):
     )
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", response_model=TokenResponse, summary="Login and get access + refresh tokens")
 async def login(request: Request, data: LoginRequest, db: AsyncSession = Depends(get_db), redis=Depends(get_redis)):
     client_ip = request.client.host if request.client else "unknown"
     rate_key = f"login_attempts:{client_ip}"
@@ -50,7 +50,7 @@ async def login(request: Request, data: LoginRequest, db: AsyncSession = Depends
     )
 
 
-@router.post("/refresh", response_model=TokenResponse)
+@router.post("/refresh", response_model=TokenResponse, summary="Exchange refresh token for new access token")
 async def refresh(data: RefreshRequest, db: AsyncSession = Depends(get_db)):
     import uuid as _uuid
     payload = decode_token(data.refresh_token)
@@ -66,17 +66,17 @@ async def refresh(data: RefreshRequest, db: AsyncSession = Depends(get_db)):
     )
 
 
-@router.post("/logout", response_model=dict)
+@router.post("/logout", response_model=dict, summary="Logout (client should discard tokens)")
 async def logout(current_user=Depends(get_current_active_user)):
     return {"message": "Logged out successfully"}
 
 
-@router.get("/me", response_model=UserResponse)
+@router.get("/me", response_model=UserResponse, summary="Get current authenticated user")
 async def get_me(current_user=Depends(get_current_active_user)):
     return current_user
 
 
-@router.patch("/me", response_model=UserResponse)
+@router.patch("/me", response_model=UserResponse, summary="Update current user's profile")
 async def update_me(
     data: UserUpdate,
     db: AsyncSession = Depends(get_db),

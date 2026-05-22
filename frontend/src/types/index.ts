@@ -249,6 +249,18 @@ export interface MessageResponse {
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
+export interface ReviewAdmin {
+  id: string;
+  rating: number;
+  title: string | null;
+  body: string | null;
+  is_verified_purchase: boolean;
+  helpful_count: number;
+  user: UserPublic;
+  product: { id: string; title: string; slug: string } | null;
+  created_at: string;
+}
+
 export interface AdminStats {
   total_users: number;
   total_sellers: number;
