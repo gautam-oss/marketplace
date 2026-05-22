@@ -151,8 +151,8 @@ export interface OrderResponse {
   status: OrderStatus;
   items: OrderItemResponse[];
   subtotal: number;
-  tax: number;
-  shipping: number;
+  tax_amount: number;
+  shipping_amount: number;
   total: number;
   shipping_address: ShippingAddress;
   razorpay_order_id: string | null;

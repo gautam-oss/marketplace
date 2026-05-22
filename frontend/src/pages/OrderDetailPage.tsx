@@ -38,15 +38,15 @@ export default function OrderDetailPage() {
           {order.items.map((item) => (
             <div key={item.id} className="flex items-center gap-4">
               <div className="w-14 h-14 bg-gray-100 rounded-lg overflow-hidden shrink-0">
-                {item.product?.images?.[0] && (
-                  <img src={item.product.images[0]} alt={item.product.title} className="w-full h-full object-cover" />
+                {item.product_image && (
+                  <img src={item.product_image} alt={item.product_title} className="w-full h-full object-cover" />
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-gray-900 truncate">{item.product?.title ?? 'Product'}</p>
+                <p className="font-medium text-gray-900 truncate">{item.product_title}</p>
                 <p className="text-sm text-gray-500">Qty: {item.quantity}</p>
               </div>
-              <PriceDisplay amount={item.total_price} />
+              <PriceDisplay amount={item.subtotal} />
             </div>
           ))}
         </div>
@@ -59,10 +59,10 @@ export default function OrderDetailPage() {
             <span>Subtotal</span><PriceDisplay amount={order.subtotal} size="sm" />
           </div>
           <div className="flex justify-between text-gray-600">
-            <span>GST (18%)</span><PriceDisplay amount={order.tax} size="sm" />
+            <span>GST (18%)</span><PriceDisplay amount={order.tax_amount} size="sm" />
           </div>
           <div className="flex justify-between text-gray-600">
-            <span>Shipping</span><PriceDisplay amount={order.shipping} size="sm" />
+            <span>Shipping</span><PriceDisplay amount={order.shipping_amount} size="sm" />
           </div>
           <div className="flex justify-between font-semibold text-gray-900 border-t pt-2 mt-2">
             <span>Total</span><PriceDisplay amount={order.total} />
