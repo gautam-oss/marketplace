@@ -5,6 +5,7 @@
 .claude/
 CLAUDE.md
 PROMPTS.md
+ARCHITECTURE.md
 
 # Python
 __pycache__/
