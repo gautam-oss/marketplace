@@ -67,6 +67,7 @@ const router = createBrowserRouter([
         element: <RoleRoute roles={['seller', 'admin']} />,
         children: [
           { path: '/seller', element: <SellerDashboardPage /> },
+          { path: '/seller/dashboard', element: <SellerDashboardPage /> },
           { path: '/seller/products', element: <SellerProductsPage /> },
           { path: '/seller/products/new', element: <CreateProductPage /> },
           { path: '/seller/products/:slug/edit', element: <EditProductPage /> },
