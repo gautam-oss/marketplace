@@ -1,4 +1,4 @@
-import { Navigate, Outlet } from 'react-router-dom'
+import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 
 interface RoleRouteProps {
@@ -7,8 +7,9 @@ interface RoleRouteProps {
 
 export default function RoleRoute({ roles }: RoleRouteProps) {
   const { isAuthenticated, user } = useAuthStore()
+  const location = useLocation()
 
-  if (!isAuthenticated) return <Navigate to="/login" replace />
+  if (!isAuthenticated) return <Navigate to="/login" state={{ from: location.pathname }} replace />
   if (!user || !roles.includes(user.role)) return <Navigate to="/" replace />
 
   return <Outlet />

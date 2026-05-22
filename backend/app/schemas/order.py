@@ -73,10 +73,12 @@ class OrderResponse(BaseModel):
 
 
 class OrderListResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     status: str
     total: Decimal
-    item_count: int
+    items: list[OrderItemResponse]
     created_at: datetime
 
 

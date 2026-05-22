@@ -57,16 +57,7 @@ async def list_my_orders(
 
     pages = (total + per_page - 1) // per_page
     return PaginatedResponse(
-        items=[
-            OrderListResponse(
-                id=o.id,
-                status=o.status,
-                total=o.total,
-                item_count=len(o.items),
-                created_at=o.created_at,
-            )
-            for o in items
-        ],
+        items=[OrderListResponse.model_validate(o) for o in items],
         total=total, page=page, per_page=per_page, pages=pages,
     )
 

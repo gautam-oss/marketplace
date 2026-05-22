@@ -54,8 +54,8 @@ export default function OrdersPage() {
             <div className="text-sm text-gray-600 space-y-1 mb-3">
               {order.items.slice(0, 3).map((item) => (
                 <div key={item.id} className="flex justify-between">
-                  <span className="truncate flex-1 pr-2">{item.product?.title ?? 'Product'} × {item.quantity}</span>
-                  <PriceDisplay amount={item.total_price} size="sm" />
+                  <span className="truncate flex-1 pr-2">{item.product_title} × {item.quantity}</span>
+                  <PriceDisplay amount={item.subtotal} size="sm" />
                 </div>
               ))}
               {order.items.length > 3 && (

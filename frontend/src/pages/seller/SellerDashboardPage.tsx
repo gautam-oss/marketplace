@@ -88,7 +88,7 @@ export default function SellerDashboardPage() {
                       #{o.id.slice(0, 8).toUpperCase()}
                     </p>
                     <p className="text-xs text-gray-500">
-                      {o.items.length} item{o.items.length !== 1 ? 's' : ''} · {new Date(o.created_at).toLocaleDateString('en-IN')}
+                      {(o.items ?? []).length} item{(o.items ?? []).length !== 1 ? 's' : ''} · {new Date(o.created_at).toLocaleDateString('en-IN')}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">

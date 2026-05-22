@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { login, register, getMe } from '../api/auth'
 import { useAuthStore } from '../store/authStore'
 import type { RegisterRequest } from '../types'
@@ -18,6 +18,7 @@ export function useLogin() {
   const { setAuth } = useAuthStore()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const location = useLocation()
 
   return useMutation({
     mutationFn: ({ email, password }: { email: string; password: string }) =>
@@ -28,7 +29,16 @@ export function useLogin() {
       const user = await getMe()
       setAuth(user, tokens)
       queryClient.setQueryData(['me'], user)
-      navigate('/')
+      const from = (location.state as { from?: string } | null)?.from
+      if (from) {
+        navigate(from)
+      } else if (user.role === 'admin') {
+        navigate('/admin')
+      } else if (user.role === 'seller') {
+        navigate('/seller')
+      } else {
+        navigate('/')
+      }
     },
   })
 }

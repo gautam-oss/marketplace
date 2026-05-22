@@ -127,11 +127,12 @@ export interface OrderCreate {
 
 export interface OrderItemResponse {
   id: string;
-  product_id: string;
-  product: ProductListItem | null;
+  product_id: string | null;
+  product_title: string;
+  product_image: string | null;
   quantity: number;
   unit_price: number;
-  total_price: number;
+  subtotal: number;
 }
 
 export type OrderStatus =

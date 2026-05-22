@@ -55,6 +55,26 @@ async def _invalidate_product_cache(slug: str) -> None:
     await cache_delete_pattern("products:list:*")
 
 
+@router.get("/my", response_model=PaginatedResponse[ProductListResponse])
+async def get_my_products(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_role("seller", "admin")),
+):
+    products, total = await list_products(
+        db, page=page, per_page=per_page, seller_id=current_user.id
+    )
+    pages = (total + per_page - 1) // per_page
+    return PaginatedResponse(
+        items=[ProductListResponse.model_validate(p) for p in products],
+        total=total,
+        page=page,
+        per_page=per_page,
+        pages=pages,
+    )
+
+
 @router.get("", response_model=PaginatedResponse[ProductListResponse])
 async def get_products(
     page: int = Query(1, ge=1),
