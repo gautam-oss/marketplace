@@ -1,194 +1,206 @@
-# Marketplace
+# 🛒 Marketplace
 
-**Last updated: 2026-05-23** · **v1.1** · **108 tests passing** · **CI green**
+> A production-ready, full-stack e-commerce platform built for the Indian market — real-time order tracking, Razorpay payments, Elasticsearch search, and a role-based seller/admin system.
 
-A full-stack multi-category e-commerce marketplace. Buyers browse and purchase products. Sellers list and manage inventory. Admins moderate the platform.
-
-Every decision in this codebase is practical — the patterns, the trade-offs, and the integrations are the same ones you encounter in real production systems.
-
----
-
-## Table of Contents
-
-- [Features](#features)
-- [Tech Stack](#tech-stack)
-- [Architecture](#architecture)
-- [Getting Started](#getting-started)
-- [Project Structure](#project-structure)
-- [Key Patterns](#key-patterns)
-- [API Reference](#api-reference)
-- [Payment Flow](#payment-flow)
-- [Email and Background Tasks](#email-and-background-tasks)
-- [Testing](#testing)
-- [Development Tasks](#development-tasks)
-- [Environment Variables](#environment-variables)
-- [CI/CD](#cicd)
+[![CI](https://github.com/gautam-oss/marketplace/actions/workflows/ci.yml/badge.svg)](https://github.com/gautam-oss/marketplace/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-async-009688?logo=fastapi&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-6-3178C6?logo=typescript&logoColor=white)
+![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
 
-## Features
+## Overview
 
-**Buyer**
-- Browse products with full-text search (Elasticsearch) and filters (category, price, rating, sort)
-- Redis-backed cart with real-time stock validation and stale item cleanup
-- Razorpay checkout — UPI, cards, net banking, wallets (India)
-- Order tracking through the full lifecycle: pending → paid → processing → shipped → delivered
-- Product reviews with verified purchase badge and helpful votes
+Marketplace is a multi-category e-commerce platform designed for India. Buyers discover products through full-text search, add them to a persistent cart, and pay via Razorpay (UPI, cards, net banking, wallets — all Indian payment methods). Sellers manage their listings from a dedicated dashboard and receive real-time WebSocket notifications when an order is placed. Admins moderate the platform through a built-in panel covering users, products, orders, and reviews.
 
-**Seller**
-- Product management: create, edit, archive, bulk actions
-- Image upload to AWS S3 with automatic resize (max 1200×1200px, 5MB limit)
-- Dashboard: revenue, active listings, recent orders, top products by sales
+The entire system is asynchronous end to end: the FastAPI backend uses `async/await` throughout (no sync database calls), Celery handles email delivery without blocking the request path, and Elasticsearch powers instant full-text search. The frontend stays in sync without polling — WebSocket events update the order timeline and notification bell the moment a payment is captured.
 
-**Admin**
-- Platform stats: users, revenue (this month vs last), orders by status
-- User management: role changes, activate/deactivate (cannot change own role)
-- Product moderation: approve, archive across all sellers
-- Order oversight: full order list, status overrides
-- Review moderation: list all reviews, filter by rating, delete any review
-
-**Infrastructure**
-- JWT auth with access + refresh tokens and login rate limiting (Redis)
-- WebSocket real-time notifications — order paid, shipped, delivered, cancelled (per-user, JWT-authenticated)
-- Celery background tasks for transactional emails (Resend SDK)
-- Sentry error monitoring
-- GitHub Actions CI: tests + lint + frontend build on every push
-
----
-
-## Tech Stack
-
-| Layer | Technology | Why |
-|---|---|---|
-| Backend | FastAPI (Python 3.12) | Async-first, automatic OpenAPI docs, fast |
-| ORM | SQLAlchemy 2.x async | Type-safe queries, Alembic migrations |
-| Database | PostgreSQL 16 | Industry-standard relational DB |
-| Cache | Redis 7 | Sub-millisecond reads for cart, caching, rate limiting |
-| Search | Elasticsearch 8 | Full-text search with filters and ranking |
-| Frontend | React 18 + Vite + TypeScript | Component-based, type-safe, fast dev server |
-| State | Zustand + React Query | Global state (auth/cart) + server state with caching |
-| Auth | JWT (python-jose + passlib) | Stateless, role-based access control |
-| Background | Celery + Redis broker | Decouple slow work (emails, image processing) |
-| Payments | Razorpay | India-first — UPI, cards, net banking, wallets |
-| Email | Resend SDK | Transactional email via API |
-| Storage | AWS S3 ap-south-1 | Scalable object storage for product images |
-| Monitoring | Sentry | Error tracking |
-| CI/CD | GitHub Actions | Tests, lint, build on every push |
+**Who it's for:** Indian sellers who need a quick path to market, and buyers who want a clean, fast shopping experience with familiar Indian payment options.
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────┐
-│           Browser (React 18)            │
-│  Vite · TypeScript · Tailwind · Zustand │
-└────────────────┬────────────────────────┘
-                 │ HTTP/JSON
-                 ▼
-┌─────────────────────────────────────────┐
-│           FastAPI  (port 8000)          │
-│     Python 3.12 · SQLAlchemy 2.x        │
-└──────┬───────────┬──────────────────────┘
-       │           │           │
-       ▼           ▼           ▼
-  PostgreSQL     Redis    Elasticsearch
-  (primary DB)  (cart,    (full-text
-                 cache,    search)
-                 queue)
-                   │
-                   ▼
-            Celery Worker
-            /           \
-        Resend          AWS S3
-        (email)        (images)
+Browser
+  │
+  ├─── HTTPS ──► Vercel (React 19 + Vite)
+  │                  │
+  │          REST / WebSocket
+  │                  │
+  └─── ─────────► Render (FastAPI / uvicorn)
+                     │
+          ┌──────────┼──────────────┬────────────────┐
+          │          │              │                │
+    Supabase      Upstash        Bonsai.io       AWS S3
+   (PostgreSQL)   (Redis)     (Elasticsearch)   (Mumbai)
+    primary DB    cart + cache   product search   images
+                  rate limits
+                  Celery broker
+
+                     │
+              Celery Worker (Render)
+                     │
+                  Resend API
+                 (transactional email)
+
+Razorpay ──── webhook ──► FastAPI /api/v1/orders/webhook
+                              │
+                    verify HMAC-SHA256
+                              │
+                    update Order status
+                              │
+                   send WebSocket event
+                              │
+                   queue email task (Celery)
 ```
-
-**Typical request flow:**
-1. Browser sends `GET /api/v1/products?q=laptop`
-2. FastAPI resolves dependencies (DB session, JWT user) via `Depends()`
-3. Route handler checks Redis cache — hits return immediately
-4. Cache miss → CRUD layer queries PostgreSQL or Elasticsearch
-5. Pydantic serializes response, Redis caches it (2-5 min TTL)
-6. JSON returned to browser
-
-**Checkout + payment flow:** see [Payment Flow](#payment-flow)
 
 ---
 
-## Getting Started
+## Tech Stack
 
-### Prerequisites
+| Layer | Technology | Version | Purpose |
+|-------|-----------|---------|---------|
+| Backend framework | FastAPI + uvicorn | latest | Async HTTP + WebSocket server |
+| Language | Python | 3.12 | Type-safe async backend |
+| ORM | SQLAlchemy asyncio | 2.x | Async DB access, type-mapped models |
+| DB driver | asyncpg | latest | High-performance PostgreSQL adapter |
+| Migrations | Alembic | latest | Schema versioning |
+| Database | PostgreSQL | 16 | Primary data store |
+| Cache / Queue | Redis | 7 | Cart storage, response cache, Celery broker |
+| Search | Elasticsearch | 8.12.0 | Full-text product search with relevance scoring |
+| Task queue | Celery | latest | Async email delivery |
+| Payments | Razorpay | latest | INR payments (UPI, cards, wallets) |
+| Email | Resend SDK | latest | Transactional email |
+| Image storage | AWS S3 (ap-south-1) | — | Product image CDN |
+| Auth | python-jose + passlib | latest | JWT access/refresh tokens + bcrypt |
+| Validation | Pydantic v2 | 2.x | Request/response schemas, 5–17× faster than v1 |
+| Monitoring | Sentry + Prometheus | latest | Error tracking + metrics |
+| Frontend | React | 19.2 | SPA with server-state sync |
+| Build tool | Vite | 8.x | Sub-second HMR, optimised prod builds |
+| Language | TypeScript | 6.x | End-to-end type safety |
+| Styling | Tailwind CSS | 4.x | Utility-first design system |
+| Server state | TanStack React Query | 5.x | Cache, background refetch, mutations |
+| Client state | Zustand | 5.x | Auth, cart, notification stores |
+| HTTP client | Axios | 1.x | Auto token refresh interceptor |
+| Icons | Lucide React | 1.x | Consistent icon system |
+| Charts | Recharts | 3.x | Admin revenue charts |
+| Routing | React Router | 7.x | File-based SPA routing |
+| Containerisation | Docker + Compose v2 | — | Local dev parity |
+| CI/CD | GitHub Actions | — | Test + lint + build on every push |
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) with WSL2 backend (Windows)
-- [Node.js 20+](https://nodejs.org/)
-- [Python 3.12+](https://www.python.org/)
-- Git
+---
 
-### 1. Clone and configure
+## Features
 
-```bash
-git clone <repo-url>
-cd marketplace
-cp .env.example .env
-```
+| Buyer | Seller | Admin |
+|-------|--------|-------|
+| Browse products by category | Create and manage product listings | Full user management (role + active status) |
+| Full-text search (Elasticsearch) | Upload up to 5 product images (5 MB each) | Moderate all products (status override) |
+| Filter by price range and category | Toggle product status (draft / active / archived) | View and manage all orders |
+| Persistent cart (30-day Redis TTL) | View orders containing their products | Delete any review |
+| 3-step checkout wizard | Advance order status (processing → shipped → delivered) | Platform stats: revenue, user counts, orders by status |
+| Razorpay payment (UPI / card / wallet) | Real-time notification when a new order is placed | Month-on-month revenue comparison |
+| Real-time order status notifications (WebSocket) | Seller analytics dashboard | |
+| Order tracking timeline (5-step visual) | | |
+| Submit product reviews (verified purchase detection) | | |
+| Mark reviews as helpful | | |
+| Cancel pending orders (auto-refund if paid) | | |
+| Profile management | | |
 
-Open `.env` and fill in your keys. For local dev, the database values are pre-filled — you need Razorpay, Resend, and AWS keys to test payments, email, and image uploads. Set `USE_LOCAL_STORAGE=true` to skip S3.
+---
 
-### 2. Start infrastructure
+## API Reference
 
-```bash
-docker compose up -d postgres redis elasticsearch
-docker compose ps   # wait until all three show (healthy)
-```
+All endpoints are prefixed `/api/v1`. Authentication uses `Authorization: Bearer <access_token>`.
 
-### 3. Set up the backend
+### Auth
 
-```bash
-cd backend
-python -m venv .venv
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `POST` | `/auth/register` | — | Register buyer; returns `access_token` + `refresh_token` |
+| `POST` | `/auth/login` | — | Login; rate-limited to 5 attempts / 60 s per IP |
+| `POST` | `/auth/refresh` | — | Exchange `refresh_token` for new token pair |
+| `POST` | `/auth/logout` | Required | Invalidate session (client discards tokens) |
+| `GET` | `/auth/me` | Required | Current user profile |
+| `PATCH` | `/auth/me` | Required | Update profile (name, avatar) |
 
-# Activate:
-source .venv/Scripts/activate   # Git Bash (Windows)
-source .venv/bin/activate       # Mac / Linux
+### Products
 
-pip install -r requirements.txt
-alembic upgrade head
-python seed.py                  # load sample data
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/products` | — | List active products; `?q=` routes through Elasticsearch |
+| `GET` | `/products/my` | seller/admin | Seller's own products (all statuses) |
+| `GET` | `/products/{slug}` | — | Product detail; cached 5 min in Redis |
+| `POST` | `/products` | seller/admin | Create product (`multipart/form-data`, up to 5 images) |
+| `PUT` | `/products/{id}` | seller/admin | Update product details (ownership enforced) |
+| `PATCH` | `/products/{id}/status` | seller/admin | Change status: `draft` / `active` / `archived` |
+| `DELETE` | `/products/{id}` | seller/admin | Soft-delete + remove from Elasticsearch index |
 
-API: **http://localhost:8000** · Swagger: **http://localhost:8000/docs**
+### Categories
 
-### 4. Set up the frontend
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/categories` | — | Full category tree; cached 1 h in Redis |
+| `GET` | `/categories/{slug}` | — | Single category |
+| `POST` | `/categories` | admin | Create category |
+| `PUT` | `/categories/{id}` | admin | Update category |
+| `DELETE` | `/categories/{id}` | admin | Delete (blocked if category has active products) |
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
+### Cart
 
-App: **http://localhost:5173**
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/cart` | Required | Get cart; stale items removed automatically |
+| `POST` | `/cart/items` | Required | Add item (capped at available stock) |
+| `PUT` | `/cart/items/{product_id}` | Required | Update quantity; `quantity=0` removes item |
+| `DELETE` | `/cart/items/{product_id}` | Required | Remove single item |
+| `DELETE` | `/cart` | Required | Clear entire cart |
 
-### 5. (Optional) Start Celery for emails
+### Orders
 
-```bash
-cd backend
-celery -A app.tasks.celery_app worker -l info --concurrency 2
-```
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/orders` | Required | Buyer: own orders. Seller: orders with their products |
+| `GET` | `/orders/{id}` | Required | Order detail with items and tracking timestamps |
+| `POST` | `/orders/checkout` | buyer | Create order + Razorpay order; clears cart |
+| `POST` | `/orders/webhook` | — | Razorpay webhook (HMAC-SHA256 verified) |
+| `PATCH` | `/orders/{id}/status` | seller/admin | Advance status: `paid → processing → shipped → delivered` |
+| `POST` | `/orders/{id}/cancel` | Required | Cancel order; issues Razorpay refund if already paid |
 
-### Seed accounts
+### Reviews
 
-All passwords: `Test1234!`
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/products/{id}/reviews` | — | Paginated reviews + rating summary (average, breakdown) |
+| `POST` | `/products/{id}/reviews` | buyer | Submit review; one per product; auto-detects verified purchase |
+| `PUT` | `/products/{id}/reviews/{rid}` | Required | Edit own review |
+| `DELETE` | `/products/{id}/reviews/{rid}` | Required | Delete own review; admin can delete any |
+| `POST` | `/reviews/{id}/helpful` | Required | Mark review helpful (not own) |
 
-| Email | Role | Notes |
-|---|---|---|
-| `admin@marketplace.dev` | admin | Full platform access |
-| `ravi@seller.dev` | seller | Electronics + Sports (8 products) |
-| `priya@seller.dev` | seller | Fashion + Home + Books (6 products) |
-| `amit@buyer.dev` | buyer | Has past orders |
-| `sneha@buyer.dev` | buyer | Has past orders |
-| `rohan@buyer.dev` | buyer | No orders yet |
+### Admin
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `GET` | `/admin/users` | admin | Paginated user list; filter by role |
+| `PATCH` | `/admin/users/{id}` | admin | Update role or active status |
+| `GET` | `/admin/products` | admin | All products (all statuses) |
+| `PATCH` | `/admin/products/{id}/status` | admin | Override product status |
+| `GET` | `/admin/orders` | admin | All orders; filter by status or buyer |
+| `GET` | `/admin/stats` | admin | Revenue (this month / last month), user counts, orders by status |
+| `GET` | `/admin/reviews` | admin | All reviews; filter by minimum rating |
+| `DELETE` | `/admin/reviews/{id}` | admin | Remove any review |
+
+### WebSocket + System
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `WS` | `/ws?token=<jwt>` | JWT in query | Real-time events: `order.paid`, `order.placed`, `order.status_changed`, `order.cancelled` |
+| `GET` | `/health` | — | `{status, db, redis}` — used by UptimeRobot / load balancer |
+| `GET` | `/metrics` | — | Prometheus metrics (via prometheus-fastapi-instrumentator) |
+| `GET` | `/docs` | — | Swagger UI with HTTPBearer auth |
 
 ---
 
@@ -196,492 +208,381 @@ All passwords: `Test1234!`
 
 ```
 marketplace/
+├── .github/
+│   └── workflows/ci.yml          # 3-job pipeline: test → lint → build
 ├── backend/
-│   ├── app/
-│   │   ├── main.py           # App entry, router registration, CORS, Sentry, lifespan
-│   │   ├── core/
-│   │   │   ├── config.py     # All settings from environment variables
-│   │   │   ├── database.py   # Async engine, session factory
-│   │   │   ├── security.py   # Password hashing, JWT create/decode
-│   │   │   ├── redis.py      # Redis client, cache helpers
-│   │   │   ├── deps.py       # get_db, get_current_user, require_role factory
-│   │   │   └── websocket.py  # ConnectionManager — in-memory per-user WS registry
-│   │   ├── api/v1/
-│   │   │   ├── auth.py       # Register, login (rate-limited), refresh, logout, /me
-│   │   │   ├── products.py   # CRUD, image upload, Elasticsearch search, Redis cache
-│   │   │   ├── categories.py # Category tree (self-referential)
-│   │   │   ├── cart.py       # Redis-backed cart
-│   │   │   ├── orders.py     # Checkout, webhook, status transitions, cancel+refund, WS events
-│   │   │   ├── reviews.py    # Product reviews + helpful votes
-│   │   │   ├── users.py      # Public profiles
-│   │   │   ├── admin.py      # Platform management: users, products, orders, reviews, stats
-│   │   │   └── ws.py         # WebSocket endpoint (JWT via query param, close 4008 on auth fail)
-│   │   ├── models/           # SQLAlchemy ORM (all imported in __init__.py for Alembic)
-│   │   ├── schemas/          # Pydantic v2 request/response shapes
-│   │   ├── crud/             # Async DB query functions (no HTTP concepts)
-│   │   ├── services/         # External: Elasticsearch, S3, Cart (Redis), Razorpay
-│   │   └── tasks/            # Celery: email tasks (Resend), image processing (Pillow)
-│   ├── alembic/              # Migration files
-│   ├── seed.py               # Development data seeder
-│   ├── Dockerfile            # Dev image (hot reload)
-│   └── Dockerfile.prod       # Production image (multi-stage, non-root, 2 workers)
+│   ├── Dockerfile                # dev image (uvicorn --reload)
+│   ├── Dockerfile.prod           # multi-stage, non-root, production
+│   ├── requirements.txt          # Python dependencies
+│   ├── seed.py                   # dev data seeder (6 users, 14 products, orders)
+│   ├── alembic.ini
+│   ├── alembic/versions/         # 2 migration files
+│   └── app/
+│       ├── main.py               # app factory, middleware, router registration
+│       ├── core/
+│       │   ├── config.py         # pydantic-settings (reads .env automatically)
+│       │   ├── database.py       # async SQLAlchemy engine + session factory
+│       │   ├── security.py       # JWT encode/decode + bcrypt helpers
+│       │   ├── redis.py          # aioredis connection pool + cache helpers
+│       │   ├── deps.py           # FastAPI dependency injection (auth, roles)
+│       │   └── websocket.py      # ConnectionManager (multi-tab aware)
+│       ├── api/v1/               # route handlers (one file per domain)
+│       │   ├── auth.py           # register, login, refresh, logout
+│       │   ├── products.py       # CRUD + image upload + search
+│       │   ├── categories.py     # category tree management
+│       │   ├── cart.py           # Redis cart operations
+│       │   ├── orders.py         # checkout, webhook, status transitions
+│       │   ├── reviews.py        # reviews + helpful votes
+│       │   ├── users.py          # user profile endpoints
+│       │   ├── admin.py          # admin CRUD + stats
+│       │   └── ws.py             # WebSocket endpoint
+│       ├── models/               # SQLAlchemy ORM (all imported in __init__.py)
+│       │   ├── user.py           # User (roles: buyer/seller/admin)
+│       │   ├── category.py       # Category (self-referential tree)
+│       │   ├── product.py        # Product (images + tags as JSON columns)
+│       │   ├── order.py          # Order + OrderItem (3 timestamp columns)
+│       │   └── review.py         # Review (unique per user+product)
+│       ├── schemas/              # Pydantic v2 request/response shapes
+│       ├── crud/                 # pure async DB query functions
+│       ├── services/
+│       │   ├── razorpay.py       # order creation, webhook verification, refund
+│       │   ├── storage.py        # S3 upload with Pillow resize (1200×1200)
+│       │   ├── search.py         # Elasticsearch index + search service
+│       │   └── cart.py           # CartService (Redis hash, stale cleanup)
+│       └── tasks/
+│           ├── celery_app.py     # Celery config (Redis broker, Asia/Kolkata timezone)
+│           └── email_tasks.py    # order confirmation + shipping notification emails
 ├── frontend/
+│   ├── index.html                # Razorpay checkout.js script tag lives here
+│   ├── vite.config.ts
 │   └── src/
-│       ├── api/              # Axios client + per-domain API functions
-│       ├── components/       # Navbar, Footer, Pagination, Toast, LoadingSpinner
+│       ├── App.tsx               # router: public + ProtectedRoute + RoleRoute + AdminLayout
+│       ├── api/
+│       │   └── client.ts         # Axios instance with automatic 401 → token refresh
+│       ├── components/
+│       │   ├── Navbar.tsx         # top nav: WebSocket hook, notification bell, cart badge
+│       │   ├── NotificationBell.tsx # real-time bell (50-item ring buffer, unread badge)
+│       │   ├── ProtectedRoute.tsx # redirect to /login if not authenticated
+│       │   ├── RoleRoute.tsx      # redirect if role doesn't match
+│       │   └── Toast.tsx          # toast notification system
+│       ├── hooks/
+│       │   ├── useWebSocket.ts    # WS with exponential backoff reconnect (max 30 s, 5 retries)
+│       │   └── useOrders.ts       # React Query hooks for orders
 │       ├── pages/
-│       │   ├── (buyer)       # Home, ProductList, ProductDetail, Cart, Checkout, Orders
-│       │   ├── seller/       # Dashboard, ProductList, Create/Edit Product
-│       │   └── admin/        # Layout (sidebar), Dashboard, Users, Products, Orders, Reviews
-│       ├── hooks/            # React Query hooks + useWebSocket (auto-reconnect, JWT auth)
-│       ├── store/            # Zustand: authStore, cartStore, notificationStore
-│       ├── components/       # Navbar (with NotificationBell), Footer, Pagination, Toast…
-│       └── types/            # TypeScript interfaces mirroring all backend schemas
-├── tests/                    # Run from project root — 108 tests, all passing
-│   ├── conftest.py           # Fixtures: async_client, test_db, buyer/seller/admin tokens
+│       │   ├── CheckoutPage.tsx   # 3-step: cart review → address → Razorpay payment
+│       │   ├── OrderDetailPage.tsx # order tracking timeline (5 steps + terminal state)
+│       │   ├── seller/            # SellerDashboard, SellerProducts, CreateProduct, EditProduct
+│       │   └── admin/             # AdminLayout, Dashboard, Users, Products, Orders, Reviews
+│       ├── store/
+│       │   ├── authStore.ts       # Zustand + localStorage persist
+│       │   ├── cartStore.ts       # Zustand cart snapshot
+│       │   └── notificationStore.ts # Zustand, 50-item ring buffer
+│       └── types/index.ts         # TypeScript interfaces mirroring all backend schemas
+├── tests/                         # 108 async tests
+│   ├── conftest.py                # fixtures: async_client, buyer/seller/admin tokens
 │   ├── test_auth.py
 │   ├── test_products.py
 │   ├── test_orders.py
 │   ├── test_cart.py
 │   ├── test_categories.py
+│   ├── test_reviews.py
+│   ├── test_admin.py
 │   ├── test_order_status.py
-│   └── test_websocket.py     # WS: valid token connects, invalid/missing token rejected
-├── .github/workflows/ci.yml
-├── docker-compose.yml
-├── Dockerfile.prod (frontend)
-└── pyproject.toml            # Ruff linter config
+│   └── test_websocket.py          # sync WebSocket tests via Starlette TestClient
+├── docker-compose.yml             # postgres:16, redis:7, elasticsearch:8.12, backend, celery_worker
+├── .env.example
+└── pytest.ini                     # asyncio_mode=auto, pythonpath=. backend
 ```
 
 ---
 
-## Key Patterns
+## Getting Started
 
-### Dependency Injection
+### Prerequisites
 
-Every route declares its dependencies explicitly — no globals, no manual wiring:
+| Tool | Version | Notes |
+|------|---------|-------|
+| Python | 3.12+ | `python --version` |
+| Node.js | 20+ | `node --version` |
+| Docker Desktop | latest | WSL2 backend on Windows |
+| Git | any | |
 
-```python
-@router.get("/products/{slug}", response_model=ProductResponse)
-async def get_product(
-    slug: str,
-    db: AsyncSession = Depends(get_db),              # session injected
-    current_user = Depends(get_current_active_user), # JWT decoded, user loaded
-):
-    ...
-```
+You also need accounts for: **Razorpay** (test mode), **Resend** (free tier), and **AWS S3** (free tier). See [Environment Variables](#environment-variables) for each variable.
 
-`require_role()` is a factory that returns a dependency checking the user's role:
-
-```python
-@router.post("/products", response_model=ProductResponse)
-async def create_product(
-    current_user = Depends(require_role("seller", "admin")),  # 403 if buyer
-):
-    ...
-```
-
-### Async Database
-
-Every database call uses `async/await`. Sync SQLAlchemy blocks the event loop:
-
-```python
-# Correct
-result = await db.execute(select(Product).where(Product.slug == slug))
-product = result.scalar_one_or_none()
-
-# Never do this — blocks all concurrent requests
-product = db.query(Product).filter_by(slug=slug).first()
-```
-
-### Redis Caching
-
-Frequently-read data is cached with a key that encodes all query parameters:
-
-```python
-cache_key = "products:list:" + hashlib.md5(params.encode()).hexdigest()
-cached = await cache_get(cache_key)
-if cached:
-    return json.loads(cached)        # no DB query
-
-# ... DB query ...
-await cache_set(cache_key, result.model_dump_json(), ttl=120)
-```
-
-Cache is explicitly invalidated on every write: `await cache_delete_pattern("products:list:*")`
-
-### SELECT FOR UPDATE (Stock Race Condition)
-
-During checkout, stock is decremented under a row-level lock to prevent oversell:
-
-```python
-result = await db.execute(
-    select(Product).where(Product.id == product_id).with_for_update()
-)
-locked_product = result.scalar_one_or_none()
-locked_product.stock -= quantity   # safe — row locked until commit
-await db.commit()
-```
-
-### Price Snapshot
-
-`OrderItem.unit_price` is copied from `product.price` at checkout time and never updated again. Past order totals are correct even if the seller later changes the price.
-
-### Verified Purchase Reviews
-
-Before accepting a review, the API checks whether the buyer actually received the product:
-
-```python
-is_verified = bool(await db.execute(
-    select(exists().where(
-        Order.buyer_id == current_user.id,
-        Order.status == "delivered",
-        OrderItem.order_id == Order.id,
-        OrderItem.product_id == product_id,
-    ))
-))
-```
-
-### Alembic Migrations
-
-Never modify tables by hand. Always generate and apply a migration:
+### Local Development
 
 ```bash
-alembic revision --autogenerate -m "add field_name to table_name"
-# Review the generated file in alembic/versions/, then:
-alembic upgrade head
-```
-
----
-
-## API Reference
-
-Base URL: `http://localhost:8000/api/v1`
-Interactive docs: **http://localhost:8000/docs**
-
-### Authentication
-
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| POST | `/auth/register` | None | Create buyer account, returns tokens |
-| POST | `/auth/login` | None | Get access + refresh tokens (rate-limited: 5/min per IP) |
-| POST | `/auth/refresh` | None | Exchange refresh token for new access token |
-| POST | `/auth/logout` | Bearer | Logout (client discards tokens) |
-| GET | `/auth/me` | Bearer | Current user profile |
-| PATCH | `/auth/me` | Bearer | Update name / avatar / password |
-
-**Swagger auth:** POST `/auth/login` with JSON body → copy `access_token` → click Authorize → paste in **HTTPBearer** field (not the OAuth2 form).
-
-### Products
-
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| GET | `/products` | None | List active products (filterable, paginated, searchable) |
-| GET | `/products/my` | seller | Seller's own products |
-| GET | `/products/{slug}` | None | Product detail with reviews |
-| POST | `/products` | seller | Create product with images (multipart, max 5 images, 5MB each) |
-| PUT | `/products/{id}` | seller (own) | Update product details |
-| PATCH | `/products/{id}/status` | seller (own) | Change status: draft / active / archived |
-| DELETE | `/products/{id}` | seller (own) | Soft-delete (archived) |
-
-**Product filters** (`GET /products`):
-
-```
-?q=wireless+earbuds        full-text search via Elasticsearch
-?category=smartphones      filter by category slug
-?min_price=500&max_price=5000
-?sort=newest|price_asc|price_desc|rating
-?page=1&per_page=20
-```
-
-### Cart
-
-Cart is stored in Redis (not the database), tied to the user's JWT identity.
-
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| GET | `/cart` | Bearer | Get cart with live product data and stale item cleanup |
-| POST | `/cart/items` | Bearer | Add item or increase quantity |
-| PUT | `/cart/items/{product_id}` | Bearer | Set exact quantity |
-| DELETE | `/cart/items/{product_id}` | Bearer | Remove item |
-| DELETE | `/cart` | Bearer | Clear entire cart |
-
-### Orders
-
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| POST | `/orders/checkout` | buyer | Create order + Razorpay payment from cart |
-| POST | `/orders/webhook` | None | Razorpay webhook (HMAC-SHA256 verified) |
-| GET | `/orders` | buyer / seller | List own orders |
-| GET | `/orders/{id}` | buyer (own) / admin | Order detail |
-| PATCH | `/orders/{id}/status` | seller / admin | Advance status |
-| POST | `/orders/{id}/cancel` | buyer (pending) / admin | Cancel + refund |
-
-### Reviews
-
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| GET | `/products/{id}/reviews` | None | List reviews + rating summary |
-| POST | `/products/{id}/reviews` | buyer | Submit review (one per buyer per product) |
-| PUT | `/products/{id}/reviews/{rid}` | owner | Edit your review |
-| DELETE | `/products/{id}/reviews/{rid}` | owner / admin | Delete review |
-| POST | `/reviews/{id}/helpful` | Bearer | Mark review as helpful |
-
-### Admin
-
-All admin routes require `role=admin`.
-
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/admin/stats` | Platform stats: users, orders, revenue (this month vs last) |
-| GET | `/admin/users` | All users, filterable by role + search |
-| PATCH | `/admin/users/{id}` | Update role or active status (blocks self-role change) |
-| GET | `/admin/products` | All products, all statuses |
-| PATCH | `/admin/products/{id}/status` | Approve (active) or archive |
-| GET | `/admin/orders` | All orders with filters |
-| GET | `/admin/reviews` | All reviews, filterable by min_rating |
-| DELETE | `/admin/reviews/{id}` | Delete any review |
-
-### WebSocket
-
-```
-ws://localhost:8000/api/v1/ws?token=<access_token>
-```
-
-Connect with a valid JWT access token. The server sends JSON events in real time:
-
-| Event type | Who receives it | When |
-|---|---|---|
-| `order.paid` | Buyer | `payment.captured` webhook fired |
-| `order.placed` | Each seller in the order | Same webhook |
-| `order.status_changed` | Buyer | Order advanced to processing / shipped / delivered |
-| `order.cancelled` | Buyer | Order cancelled or payment failed |
-
-Event shape:
-```json
-{ "type": "order.paid", "order_id": "uuid", "message": "Payment confirmed for order #ABCD1234!", "timestamp": "2026-05-23T..." }
-```
-
-Frontend behaviour: `useWebSocket` hook (initialized in Navbar) auto-reconnects with exponential backoff (up to 5 retries, max 30s). On each event: toast notification shown, `NotificationBell` unread count incremented, React Query cache invalidated for affected order.
-
-### Pagination
-
-All list endpoints return:
-
-```json
-{
-  "items": [...],
-  "total": 100,
-  "page": 1,
-  "per_page": 20,
-  "pages": 5
-}
-```
-
----
-
-## Payment Flow
-
-Razorpay is India's standard payment gateway: UPI, cards, net banking, wallets.
-
-```
-1. Buyer adds items to cart
-
-2. POST /orders/checkout (buyer only)
-   → Validate stock (SELECT FOR UPDATE — race condition safe)
-   → Calculate: subtotal + 18% GST + ₹50 shipping (free over ₹500)
-   → razorpay.order.create(amount_paise, currency="INR")
-   → Save Order (status=pending) with razorpay_order_id
-   → Return { razorpay_order_id, amount_paise, razorpay_key_id }
-
-3. Frontend opens Razorpay checkout modal
-   → new window.Razorpay({ key, amount, order_id, handler })
-   → rzp.open()
-
-4. Buyer completes payment
-
-5. Razorpay POSTs to POST /orders/webhook
-   → Verify X-Razorpay-Signature (HMAC-SHA256 of raw body bytes)
-   → payment.captured → order=paid → trigger confirmation email (Celery)
-   → payment.failed   → order=cancelled → restore stock
-```
-
-**Local webhook testing:**
-
-```bash
-ngrok http 8000
-# Add https://xxxx.ngrok.io/api/v1/orders/webhook to Razorpay Dashboard
-# → Settings → Webhooks → Add Webhook
-# → Subscribe: payment.captured, payment.failed
-```
-
----
-
-## Email and Background Tasks
-
-Emails are sent via **Resend** — no SMTP, no configuration. All email sends are offloaded to Celery so the API response is not delayed.
-
-```python
-# Webhook handler — fire and forget
-send_order_confirmation_email.delay(str(order.id))
-
-# Celery task — single asyncio.run() (two calls cause event loop crash with asyncpg)
-async def _fetch():
-    async with AsyncSessionLocal() as db:
-        order = await get_order(db, order_id)
-        user = await get_user_by_id(db, order.buyer_id)
-        return order, user
-
-order, user = asyncio.run(_fetch())
-resend.Emails.send({"from": ..., "to": [user.email], "subject": ..., "html": ...})
-```
-
-**Tasks:**
-- `send_order_confirmation_email` — triggered by `payment.captured` webhook
-- `send_shipping_notification_email` — triggered when status advances to `shipped`
-- `send_welcome_email` — triggered on registration
-
-**Run the worker:**
-
-```bash
-cd backend
-celery -A app.tasks.celery_app worker -l info --concurrency 2
-```
-
----
-
-## Testing
-
-Tests hit a real PostgreSQL database — not mocks. This catches issues that in-memory fakes miss.
-
-```bash
-# Run from the project root (not backend/)
-backend\.venv\Scripts\python.exe -m pytest tests/ -q          # Windows
-python -m pytest tests/ -q                                     # Mac/Linux (venv active)
-
-# With coverage
-backend\.venv\Scripts\python.exe -m pytest tests/ -q --cov=app --cov-report=term-missing
-
-# Single file
-backend\.venv\Scripts\python.exe -m pytest tests/test_auth.py -v --tb=short
-```
-
-**Status: 108 tests, all passing.**
-
-Every test gets a clean database — `conftest.py` truncates all tables after each test. Fixtures provide everything needed:
-
-```python
-async def test_create_product_as_seller(async_client, seller_token, test_db):
-    response = await async_client.post(
-        "/api/v1/products",
-        data={"title": "Test Product", "price": "999", "stock": "10"},
-        headers={"Authorization": f"Bearer {seller_token}"},
-    )
-    assert response.status_code == 201
-```
-
-**Test coverage targets per route:**
-
-| Case | What it checks |
-|---|---|
-| Happy path | Route works with valid input |
-| Unauthenticated | Returns 401 with no token |
-| Wrong role | Returns 403 for buyer calling seller route |
-| Not found | Returns 404 for missing resource |
-| Conflict | Returns 409 for duplicates |
-
----
-
-## Development Tasks
-
-### Add a field to a model
-
-1. Edit the model in `backend/app/models/`
-2. Edit the Pydantic schema in `backend/app/schemas/`
-3. Generate and apply migration:
-   ```bash
-   alembic revision --autogenerate -m "add field to table"
-   alembic upgrade head
-   ```
-4. Update the CRUD function if needed
-5. Write or update tests
-
-### Add a new route
-
-1. Add to the relevant file in `backend/app/api/v1/`
-2. Register the router in `backend/app/main.py` if it's a new file
-3. Add schemas, CRUD function
-4. Write tests in `tests/test_<resource>.py`
-
-### Reset the database
-
-```bash
-docker compose down -v
+# 1. Clone and configure
+git clone https://github.com/gautam-oss/marketplace.git
+cd marketplace
+cp .env.example .env
+# Edit .env — fill in RAZORPAY, RESEND, AWS keys
+
+# 2. Start infrastructure
 docker compose up -d postgres redis elasticsearch
+
+# 3. Backend
 cd backend
-alembic upgrade head
-python seed.py
+python -m venv .venv
+
+# Windows (PowerShell):
+.venv\Scripts\Activate.ps1
+# macOS / Linux:
+source .venv/bin/activate
+
+pip install -r requirements.txt
+alembic upgrade head          # run migrations
+python seed.py                # optional: load demo data
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# 4. Celery worker (new terminal, venv active, from backend/)
+celery -A app.tasks.celery_app worker -l info --concurrency 2
+
+# 5. Frontend (new terminal)
+cd frontend
+npm install
+npm run dev                   # http://localhost:5173
 ```
 
-### Check and fix lint errors
+API docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+
+**Swagger auth:** `POST /api/v1/auth/login` → copy `access_token` → Authorize → paste in **HTTPBearer** field (not the OAuth2 form).
+
+### Docker (all services)
 
 ```bash
-ruff check backend/app/          # show errors
-ruff check backend/app/ --fix    # auto-fix safe errors
+docker compose up -d
+# Backend:  http://localhost:8000
+# Frontend: run npm run dev separately (or add to compose)
 ```
 
 ---
 
 ## Environment Variables
 
-Copy `.env.example` to `.env` and fill in:
+Copy `.env.example` to `.env` and fill in the values below.
 
+### Database
+
+| Variable | Required | Description | Where to get |
+|----------|----------|-------------|--------------|
+| `DATABASE_URL` | Yes | `postgresql+asyncpg://user:pass@host:5432/db` | Local: Docker. Prod: Supabase |
+| `REDIS_URL` | Yes | `redis://localhost:6379/0` | Local: Docker. Prod: Upstash |
+| `ELASTICSEARCH_URL` | Yes | `http://localhost:9200` | Local: Docker. Prod: Bonsai.io |
+
+### Auth
+
+| Variable | Required | Description | Where to get |
+|----------|----------|-------------|--------------|
+| `SECRET_KEY` | Yes | 32-byte hex string | `python -c "import secrets; print(secrets.token_hex(32))"` |
+| `ALGORITHM` | No | JWT algorithm (default: `HS256`) | — |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | No | Access token TTL (default: `30`) | — |
+| `REFRESH_TOKEN_EXPIRE_DAYS` | No | Refresh token TTL (default: `7`) | — |
+
+### Payments
+
+| Variable | Required | Description | Where to get |
+|----------|----------|-------------|--------------|
+| `RAZORPAY_KEY_ID` | Yes | `rzp_test_...` | [Razorpay Dashboard](https://dashboard.razorpay.com) → Settings → API Keys |
+| `RAZORPAY_KEY_SECRET` | Yes | Key secret | Same as above |
+
+### Email
+
+| Variable | Required | Description | Where to get |
+|----------|----------|-------------|--------------|
+| `RESEND_API_KEY` | Yes | `re_...` | [Resend Dashboard](https://resend.com) → API Keys |
+| `EMAIL_FROM` | No | Sender address (default: `onboarding@resend.dev`) | Use `onboarding@resend.dev` in test mode |
+| `TEST_EMAIL_OVERRIDE` | No | Redirect all email to this address in dev | Your email — Resend test mode only delivers to account owner |
+
+### Storage
+
+| Variable | Required | Description | Where to get |
+|----------|----------|-------------|--------------|
+| `AWS_ACCESS_KEY_ID` | Yes | IAM access key | AWS Console → IAM → Users → Security credentials |
+| `AWS_SECRET_ACCESS_KEY` | Yes | IAM secret | Same as above |
+| `AWS_REGION` | No | S3 region (default: `ap-south-1`) | — |
+| `S3_BUCKET_NAME` | Yes | Bucket name | Create in AWS S3 console with public-read ACL |
+| `USE_LOCAL_STORAGE` | No | Skip S3 upload in CI/dev (default: `false`) | Set `true` to skip S3 |
+
+### Monitoring & App
+
+| Variable | Required | Description | Where to get |
+|----------|----------|-------------|--------------|
+| `SENTRY_DSN` | No | Error tracking DSN | [Sentry](https://sentry.io) → New Project → FastAPI |
+| `ALLOWED_ORIGINS` | No | CORS origins (default: `http://localhost:5173`) | Add prod frontend URL |
+
+---
+
+## Testing
+
+```bash
+# Run all 108 tests (from project root, not backend/)
+backend\.venv\Scripts\python.exe -m pytest tests/ -q
+
+# Verbose with coverage
+backend\.venv\Scripts\python.exe -m pytest tests/ -v --tb=short --cov=app --cov-report=term-missing
+
+# Single module
+backend\.venv\Scripts\python.exe -m pytest tests/test_orders.py -v
+```
+
+**Results:** 108 tests, 0 failures, ~70 seconds on first run (DB setup) / ~15 s on subsequent runs.
+
+| Test file | Coverage |
+|-----------|----------|
+| `test_auth.py` | register, login, rate limiting, refresh, /me |
+| `test_products.py` | CRUD, ownership, image upload, 5MB limit |
+| `test_orders.py` | checkout, stock decrement, webhook, cancel |
+| `test_cart.py` | add, update, remove, stale cleanup, quantity cap |
+| `test_categories.py` | tree, CRUD, active product guard |
+| `test_reviews.py` | create, update, delete, helpful votes, uniqueness |
+| `test_admin.py` | user management, product moderation, stats |
+| `test_order_status.py` | all valid transitions, invalid transition rejection |
+| `test_websocket.py` | valid token connects, invalid/missing token rejected (4008) |
+
+Tests use a separate `marketplace_test` PostgreSQL database. Each test truncates all tables + flushes Redis — full isolation, no teardown needed.
+
+---
+
+## Deployment
+
+| Service | Platform | Free Tier |
+|---------|----------|-----------|
+| Backend API | [Render](https://render.com) | 750 h/month, sleeps after 15 min |
+| Frontend | [Vercel](https://vercel.com) | Unlimited bandwidth |
+| PostgreSQL | [Supabase](https://supabase.com) | 500 MB database, no sleep |
+| Redis | [Upstash](https://upstash.com) | 10 000 commands/day |
+| Elasticsearch | [Bonsai.io](https://bonsai.io) | Sandbox: 125 MB index |
+| Keep-alive | [UptimeRobot](https://uptimerobot.com) | 50 monitors, 5-min interval |
+
+**Deployment steps** are documented in `PROMPTS.md` (local, gitignored). Summary:
+
+1. Provision Supabase (DB) + Upstash (Redis) + Bonsai.io (ES)
+2. Deploy backend to Render — set all env vars, run `alembic upgrade head`
+3. Deploy Celery worker to Render as a Background Worker
+4. Deploy frontend to Vercel — set `VITE_API_URL` + `VITE_WS_URL`
+5. Update Razorpay webhook URL to `https://your-backend.onrender.com/api/v1/orders/webhook`
+6. Configure UptimeRobot to ping `/health` every 5 minutes
+
+**Frontend env vars for production:**
 ```env
-# Database (pre-configured for Docker)
-DATABASE_URL=postgresql+asyncpg://marketplace:marketplace@localhost:5432/marketplace
-REDIS_URL=redis://localhost:6379/0
-ELASTICSEARCH_URL=http://localhost:9200
-
-# Auth — generate: python -c "import secrets; print(secrets.token_hex(32))"
-SECRET_KEY=<your-secret-key>
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-REFRESH_TOKEN_EXPIRE_DAYS=7
-
-# Razorpay — https://dashboard.razorpay.com/app/keys
-RAZORPAY_KEY_ID=rzp_test_...
-RAZORPAY_KEY_SECRET=...
-
-# Resend — https://resend.com/api-keys
-RESEND_API_KEY=re_...
-EMAIL_FROM=onboarding@resend.dev
-TEST_EMAIL_OVERRIDE=   # dev only: redirect all mail here (Resend test mode restriction)
-
-# AWS S3 — or set USE_LOCAL_STORAGE=true to save files locally
-AWS_ACCESS_KEY_ID=...
-AWS_SECRET_ACCESS_KEY=...
-AWS_REGION=ap-south-1
-S3_BUCKET_NAME=your-bucket-name
-USE_LOCAL_STORAGE=false
-
-# Sentry — leave blank to disable
-SENTRY_DSN=
-
-# CORS
-ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
+VITE_API_URL=https://your-backend.onrender.com
+VITE_WS_URL=wss://your-backend.onrender.com
 ```
 
 ---
 
-## CI/CD
+## Key Technical Decisions
 
-GitHub Actions runs on every push to `main` or `develop` and on all pull requests.
+### 1. Async FastAPI over Django
 
-| Job | What it does |
-|---|---|
-| `backend-test` | Spins up PostgreSQL + Redis, installs deps, runs 108 pytest tests |
-| `backend-lint` | Runs ruff (E, W, F rules, ignores E501) |
-| `frontend-build` | TypeScript type check + Vite production build |
+FastAPI's native `async/await` support means a single worker process can handle hundreds of concurrent requests without thread-pool overhead. Combined with `asyncpg` (the fastest PostgreSQL driver for Python), the database layer adds zero synchronous blocking. Django REST Framework, while excellent, would require `channels` for WebSocket support and `django-ninja` or similar for comparable API ergonomics. FastAPI also generates OpenAPI 3.0 docs automatically — the Swagger UI works out of the box.
 
-A green run means: tests pass, code is lint-clean, frontend compiles without errors.
+### 2. Redis for the Cart (not PostgreSQL)
 
-**Production Dockerfiles** (`backend/Dockerfile.prod`, `frontend/Dockerfile.prod`) are ready but deployment is not yet configured. The frontend Dockerfile uses nginx with SPA fallback and 1-year asset cache headers.
+Carts are ephemeral, user-scoped, and written far more frequently than they are read in aggregate. A Redis hash per user (`cart:{user_id}`) with a 30-day TTL gives us: O(1) reads/writes (`HGET`/`HSET`), automatic expiry without a cleanup job, and zero load on PostgreSQL for a high-frequency operation. Stale items (sold-out or archived products) are cleaned up lazily on each `GET /cart` — the cart read path calls `get_products_by_ids` and removes any items whose products no longer exist or are inactive.
+
+### 3. SELECT FOR UPDATE in Checkout
+
+Concurrent checkouts for the same product without a lock would allow overselling. When two buyers simultaneously check out the last unit, a plain `UPDATE ... SET stock = stock - 1 WHERE stock > 0` might succeed twice at the read-committed isolation level. `SELECT ... FOR UPDATE` in checkout acquires a row-level lock on each product row before decrementing stock, serialising concurrent checkout attempts for the same product. The lock is held only for the duration of the stock update — typically microseconds — so it doesn't create a meaningful bottleneck.
+
+### 4. Celery for Email Delivery
+
+Sending an email inline with the order webhook response would add 200–500 ms of Resend API latency to every successful payment event. With Celery, the webhook handler queues the email task and returns `{"status": "ok"}` in under 10 ms. The Celery worker picks up the task from Redis, fetches order + user data in a single async database query (via `asyncio.run(_fetch())`), and sends the email. Tasks are configured with `max_retries=3, default_retry_delay=60` — if Resend is temporarily unavailable, the task retries automatically.
+
+### 5. Razorpay Webhook Signature Verification
+
+Razorpay signs webhook payloads with an HMAC-SHA256 of the raw request body using the key secret. The `/orders/webhook` endpoint verifies this signature before processing any event. This prevents spoofed webhook calls that could mark orders as paid without actual payment. The raw body bytes are captured before JSON parsing (important — parsing modifies whitespace) and verified via the Razorpay SDK's `verify_webhook_signature` utility. An invalid signature returns 400 immediately; the order is never touched.
+
+### 6. SQLAlchemy 2.x `mapped_column()` and `Mapped[T]`
+
+The 2.x ORM API uses Python type annotations directly (`Mapped[Optional[str]]`) rather than the old `Column(String, nullable=True)` form. This means IDEs understand column types without plugins, mypy can type-check ORM queries, and the `DeclarativeBase` approach eliminates the `Base = declarative_base()` metaclass pattern. Every model column is explicitly typed, reducing an entire class of runtime surprises where `None` propagates unexpectedly from nullable columns.
+
+### 7. Elasticsearch for Product Search
+
+`ILIKE '%query%'` on a PostgreSQL `products` table works fine at hundreds of products but degrades to sequential scans at scale. Elasticsearch's `multi_match` query provides: relevance scoring (title matches score 3×, tags 2×, description 1×), BM25 ranking, and efficient filter combinations (status=active, stock>0, price range) via the bool/filter DST. Elasticsearch is treated as non-critical: if the service is unavailable, `products.py` falls back to a DB query. This means the platform remains functional during ES downtime — search results are just less relevant.
+
+---
+
+## Security
+
+| Measure | Implementation |
+|---------|----------------|
+| Password hashing | bcrypt via passlib (`bcrypt<4.0.0` pinned for compatibility) |
+| Session tokens | JWT access (30 min) + refresh (7 days); tokens are stateless, rotation on refresh |
+| Webhook integrity | Razorpay HMAC-SHA256 signature verified on every incoming webhook |
+| Login rate limiting | Redis counter per IP: 5 attempts / 60 seconds; counter reset on success |
+| SQL injection | SQLAlchemy ORM only — no raw SQL anywhere in the codebase |
+| CORS | Explicit `ALLOWED_ORIGINS` list — never `allow_origins=["*"]` |
+| Secrets management | All credentials from environment variables; `.env` is gitignored |
+| Race condition prevention | `SELECT FOR UPDATE` row lock during stock decrement at checkout |
+| Ownership enforcement | Sellers can only modify their own products; buyers can only cancel their own orders |
+| Soft deletes | Products are archived, not hard-deleted — data is retained for order history |
+| Input validation | Pydantic v2 validates every request body; `@field_validator` for custom rules (e.g., 6-digit pincode) |
+| Image validation | Content-type allow-list (JPEG/PNG/WebP); 5 MB size limit checked before S3 upload |
+| Inactive account guard | `get_current_active_user` dependency rejects `is_active=False` users on every authenticated route |
+
+---
+
+## CI/CD Pipeline
+
+The GitHub Actions pipeline runs on every push to `main`/`develop` and on every pull request targeting `main`. All 3 jobs must pass before merge.
+
+```
+push / PR
+    │
+    ├─── backend-test (ubuntu-latest)
+    │       services: postgres:16, redis:7
+    │       python: 3.12
+    │       steps: pip install → pytest tests/ --cov=app
+    │       env: all secrets injected as job env vars
+    │       USE_LOCAL_STORAGE=true (skips S3)
+    │
+    ├─── backend-lint (ubuntu-latest)
+    │       python: 3.12
+    │       steps: pip install ruff → ruff check backend/app
+    │       rules: E, W, F — ignore E501 (line length)
+    │
+    └─── frontend-build (ubuntu-latest)
+            node: 20
+            steps: npm ci → tsc --noEmit → npm run build
+            Note: unused TypeScript declarations cause build failure
+```
+
+Secrets required in GitHub repo Settings → Secrets → Actions: `DATABASE_URL`, `REDIS_URL`, `SECRET_KEY`, `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RESEND_API_KEY`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`.
+
+For CI, `USE_LOCAL_STORAGE=true` is hardcoded in the workflow — no S3 access required in tests.
+
+---
+
+## Contributing
+
+```bash
+# Fork the repo, then:
+git checkout -b feat/your-feature-name
+# Make changes
+git commit -m "feat: description of what was added"
+git push origin feat/your-feature-name
+# Open a PR against main
+```
+
+**Branch naming:** `feat/`, `fix/`, `docs/`, `chore/`, `refactor/`
+
+**Commit convention:** [Conventional Commits](https://www.conventionalcommits.org) — `feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`
+
+**Before opening a PR:**
+- `pytest tests/ -q` — all 108 tests must pass
+- `ruff check backend/app --select E,W,F --ignore E501` — zero lint errors
+- `npx tsc --noEmit` (from `frontend/`) — zero TypeScript errors
+
+---
+
+## License
+
+[MIT](LICENSE) — free to use, modify, and distribute.
+
+---
+
+<div align="center">
+Built with FastAPI, React, and ☕
+</div>
