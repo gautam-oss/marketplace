@@ -1,8 +1,8 @@
-# 🛒 Marketplace
+# 🛒 PyMart
 
 > A production-ready, full-stack e-commerce platform built for the Indian market — real-time order tracking, Razorpay payments, Elasticsearch search, and a role-based seller/admin system.
 
-[![CI](https://github.com/gautam-oss/marketplace/actions/workflows/ci.yml/badge.svg)](https://github.com/gautam-oss/marketplace/actions/workflows/ci.yml)
+[![CI](https://github.com/gautam-oss/PyMart/actions/workflows/ci.yml/badge.svg)](https://github.com/gautam-oss/PyMart/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-async-009688?logo=fastapi&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
@@ -13,7 +13,7 @@
 
 ## Overview
 
-Marketplace is a multi-category e-commerce platform designed for India. Buyers discover products through full-text search, add them to a persistent cart, and pay via Razorpay (UPI, cards, net banking, wallets — all Indian payment methods). Sellers manage their listings from a dedicated dashboard and receive real-time WebSocket notifications when an order is placed. Admins moderate the platform through a built-in panel covering users, products, orders, and reviews.
+PyMart is a multi-category e-commerce platform designed for India. Buyers discover products through full-text search, add them to a persistent cart, and pay via Razorpay (UPI, cards, net banking, wallets — all Indian payment methods). Sellers manage their listings from a dedicated dashboard and receive real-time WebSocket notifications when an order is placed. Admins moderate the platform through a built-in panel covering users, products, orders, and reviews.
 
 The entire system is asynchronous end to end: the FastAPI backend uses `async/await` throughout (no sync database calls), Celery handles email delivery without blocking the request path, and Elasticsearch powers instant full-text search. The frontend stays in sync without polling — WebSocket events update the order timeline and notification bell the moment a payment is captured.
 
@@ -207,7 +207,7 @@ All endpoints are prefixed `/api/v1`. Authentication uses `Authorization: Bearer
 ## Project Structure
 
 ```
-marketplace/
+PyMart/
 ├── .github/
 │   └── workflows/ci.yml          # 3-job pipeline: test → lint → build
 ├── backend/
@@ -313,8 +313,8 @@ You also need accounts for: **Razorpay** (test mode), **Resend** (free tier), an
 
 ```bash
 # 1. Clone and configure
-git clone https://github.com/gautam-oss/marketplace.git
-cd marketplace
+git clone https://github.com/gautam-oss/PyMart.git
+cd PyMart
 cp .env.example .env
 # Edit .env — fill in RAZORPAY, RESEND, AWS keys
 
@@ -440,7 +440,7 @@ backend\.venv\Scripts\python.exe -m pytest tests/test_orders.py -v
 | `test_order_status.py` | all valid transitions, invalid transition rejection |
 | `test_websocket.py` | valid token connects, invalid/missing token rejected (4008) |
 
-Tests use a separate `marketplace_test` PostgreSQL database. Each test truncates all tables + flushes Redis — full isolation, no teardown needed.
+Tests use a separate `pymart_test` PostgreSQL database. Each test truncates all tables + flushes Redis — full isolation, no teardown needed.
 
 ---
 
