@@ -1,6 +1,5 @@
 import resend
 
-from app.core.config import settings
 from app.tasks.celery_app import celery_app
 
 
