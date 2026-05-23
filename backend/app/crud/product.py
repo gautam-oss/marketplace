@@ -36,7 +36,7 @@ async def get_product_by_id(
     if load_relations:
         query = query.options(
             selectinload(Product.seller),
-            selectinload(Product.category).selectinload(Category.children),
+            selectinload(Product.category).selectinload(Category.children).selectinload(Category.children),
             selectinload(Product.reviews),
         )
     result = await db.execute(query)
@@ -52,7 +52,7 @@ async def get_product_by_slug(db: AsyncSession, slug: str) -> Product | None:
         select(Product)
         .options(
             selectinload(Product.seller),
-            selectinload(Product.category).selectinload(Category.children),
+            selectinload(Product.category).selectinload(Category.children).selectinload(Category.children),
             selectinload(Product.reviews),
         )
         .where(Product.slug == slug)
@@ -68,7 +68,7 @@ async def get_products_by_ids(db: AsyncSession, ids: list[str]) -> list[Product]
         select(Product)
         .options(
             selectinload(Product.seller),
-            selectinload(Product.category).selectinload(Category.children),
+            selectinload(Product.category).selectinload(Category.children).selectinload(Category.children),
         )
         .where(Product.id.in_(uuids))
     )
@@ -89,7 +89,7 @@ async def list_products(
 ) -> tuple[list[Product], int]:
     query = select(Product).options(
         selectinload(Product.seller),
-        selectinload(Product.category).selectinload(Category.children),
+        selectinload(Product.category).selectinload(Category.children).selectinload(Category.children),
     )
     if status is not None:
         query = query.where(Product.status == status)

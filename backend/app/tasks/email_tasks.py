@@ -8,17 +8,24 @@ from app.tasks.celery_app import celery_app
 def send_order_confirmation_email(self, order_id: str):
     import asyncio
 
-    from app.core.database import AsyncSessionLocal
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.core.config import settings
     from app.crud.order import get_order
     from app.crud.user import get_user_by_id
 
     async def _fetch():
-        async with AsyncSessionLocal() as db:
-            order = await get_order(db, order_id)
-            if not order:
-                return None, None
-            user = await get_user_by_id(db, order.buyer_id)
-            return order, user
+        engine = create_async_engine(settings.DATABASE_URL, pool_pre_ping=True)
+        Session = async_sessionmaker(engine, expire_on_commit=False)
+        try:
+            async with Session() as db:
+                order = await get_order(db, order_id)
+                if not order:
+                    return None, None
+                user = await get_user_by_id(db, order.buyer_id)
+                return order, user
+        finally:
+            await engine.dispose()
 
     order, user = asyncio.run(_fetch())
     if not order or not user:
@@ -54,17 +61,24 @@ def send_order_confirmation_email(self, order_id: str):
 def send_shipping_notification_email(self, order_id: str):
     import asyncio
 
-    from app.core.database import AsyncSessionLocal
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.core.config import settings
     from app.crud.order import get_order
     from app.crud.user import get_user_by_id
 
     async def _fetch():
-        async with AsyncSessionLocal() as db:
-            order = await get_order(db, order_id)
-            if not order:
-                return None, None
-            user = await get_user_by_id(db, order.buyer_id)
-            return order, user
+        engine = create_async_engine(settings.DATABASE_URL, pool_pre_ping=True)
+        Session = async_sessionmaker(engine, expire_on_commit=False)
+        try:
+            async with Session() as db:
+                order = await get_order(db, order_id)
+                if not order:
+                    return None, None
+                user = await get_user_by_id(db, order.buyer_id)
+                return order, user
+        finally:
+            await engine.dispose()
 
     order, user = asyncio.run(_fetch())
     if not order or not user:
@@ -92,12 +106,19 @@ def send_shipping_notification_email(self, order_id: str):
 def send_welcome_email(self, user_id: int):
     import asyncio
 
-    from app.core.database import AsyncSessionLocal
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.core.config import settings
     from app.crud.user import get_user_by_id
 
     async def _fetch():
-        async with AsyncSessionLocal() as db:
-            return await get_user_by_id(db, user_id)
+        engine = create_async_engine(settings.DATABASE_URL, pool_pre_ping=True)
+        Session = async_sessionmaker(engine, expire_on_commit=False)
+        try:
+            async with Session() as db:
+                return await get_user_by_id(db, user_id)
+        finally:
+            await engine.dispose()
 
     user = asyncio.run(_fetch())
     if not user:
