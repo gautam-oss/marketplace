@@ -4,7 +4,7 @@ import { useOrder } from '../hooks/useOrders'
 import LoadingSpinner from '../components/LoadingSpinner'
 import ErrorMessage from '../components/ErrorMessage'
 import PriceDisplay from '../components/PriceDisplay'
-import type { OrderResponse, OrderStatus } from '../types'
+import type { OrderResponse } from '../types'
 
 const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-800',
@@ -15,9 +15,6 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: 'bg-red-100 text-red-800',
   refunded: 'bg-gray-100 text-gray-800',
 }
-
-// Normal progression order
-const STATUS_ORDER: OrderStatus[] = ['pending', 'paid', 'processing', 'shipped', 'delivered']
 
 type StepState = 'done' | 'active' | 'pending'
 
