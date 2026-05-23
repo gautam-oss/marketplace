@@ -488,7 +488,9 @@ Concurrent checkouts for the same product without a lock would allow overselling
 
 ### 4. Celery for Email Delivery
 
-Sending an email inline with the order webhook response would add 200–500 ms of Resend API latency to every successful payment event. With Celery, the webhook handler queues the email task and returns `{"status": "ok"}` in under 10 ms. The Celery worker picks up the task from Redis, fetches order + user data in a single async database query (via `asyncio.run(_fetch())`), and sends the email. Tasks are configured with `max_retries=3, default_retry_delay=60` — if Resend is temporarily unavailable, the task retries automatically.
+Sending an email inline with the order webhook response would add 200–500 ms of Resend API latency to every successful payment event. With Celery, the webhook handler queues the email task and returns `{"status": "ok"}` in under 10 ms. The Celery worker picks up the task from Redis, fetches order + user data in a single async database query, and sends the email. Tasks are configured with `max_retries=3, default_retry_delay=60` — if Resend is temporarily unavailable, the task retries automatically.
+
+**Engine-per-task pattern:** Celery uses prefork workers — each worker is a forked process. The global async SQLAlchemy engine in `database.py` is created at import time and binds its connection pool to the parent process's event loop. When a forked worker calls `asyncio.run()`, Python creates a *new* event loop, and any attempt to reuse the parent's engine connections raises `RuntimeError: got Future attached to a different loop`. The fix is to create a fresh `create_async_engine()` inside each task's `_fetch()` coroutine — scoped to the same event loop that `asyncio.run()` creates — and `await engine.dispose()` immediately after the query.
 
 ### 5. Razorpay Webhook Signature Verification
 
