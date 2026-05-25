@@ -13,11 +13,9 @@
 
 ## Overview
 
-PyMart is a multi-category e-commerce platform designed for India. Buyers discover products through full-text search, add them to a persistent cart, and pay via Razorpay (UPI, cards, net banking, wallets — all Indian payment methods). Sellers manage their listings from a dedicated dashboard and receive real-time WebSocket notifications when an order is placed. Admins moderate the platform through a built-in panel covering users, products, orders, and reviews.
+PyMart is a multi-category e-commerce platform designed for India. Buyers discover products through full-text search, add them to a persistent cart, and pay via Razorpay (UPI, cards, net banking, wallets). Sellers manage their listings from a dedicated dashboard and receive real-time WebSocket notifications when an order is placed. Admins moderate the platform through a built-in panel covering users, products, orders, and reviews.
 
-The entire system is asynchronous end to end: the FastAPI backend uses `async/await` throughout (no sync database calls), Celery handles email delivery without blocking the request path, and Elasticsearch powers instant full-text search. The frontend stays in sync without polling — WebSocket events update the order timeline and notification bell the moment a payment is captured.
-
-**Who it's for:** Indian sellers who need a quick path to market, and buyers who want a clean, fast shopping experience with familiar Indian payment options.
+The entire system is asynchronous end to end: the FastAPI backend uses `async/await` throughout, Celery handles email delivery without blocking the request path, and Elasticsearch powers instant full-text search. The frontend stays in sync without polling — WebSocket events update the order timeline and notification bell the moment a payment is captured.
 
 ---
 
@@ -30,32 +28,30 @@ Browser
   │                  │
   │          REST / WebSocket
   │                  │
-  └─── ─────────► Render (FastAPI / uvicorn)
+  └─── ─────────► FastAPI / uvicorn  ◄─── Razorpay webhook
                      │
           ┌──────────┼──────────────┬────────────────┐
           │          │              │                │
-    Supabase      Upstash        Bonsai.io       AWS S3
-   (PostgreSQL)   (Redis)     (Elasticsearch)   (Mumbai)
-    primary DB    cart + cache   product search   images
-                  rate limits
-                  Celery broker
-
-                     │
-              Celery Worker (Render)
-                     │
-                  Resend API
-                 (transactional email)
-
-Razorpay ──── webhook ──► FastAPI /api/v1/orders/webhook
-                              │
-                    verify HMAC-SHA256
-                              │
-                    update Order status
-                              │
-                   send WebSocket event
-                              │
-                   queue email task (Celery)
+       PostgreSQL  Redis        Elasticsearch     AWS S3
+        primary DB  cart + cache   product search   images
+                    rate limits
+                    Celery broker
+                         │
+                  Celery Worker
+                         │
+                      Resend API
+                   (transactional email)
 ```
+
+All five backend services run as Docker containers in local development:
+
+| Container | Image | Role |
+|-----------|-------|------|
+| `backend` | `Dockerfile` | FastAPI + uvicorn (async HTTP + WebSocket) |
+| `celery_worker` | `Dockerfile` | Celery worker for email tasks |
+| `postgres` | `postgres:16` | Primary database |
+| `redis` | `redis:7` | Cache, cart storage, Celery broker |
+| `elasticsearch` | `elasticsearch:8.12.0` | Full-text product search |
 
 ---
 
@@ -76,7 +72,7 @@ Razorpay ──── webhook ──► FastAPI /api/v1/orders/webhook
 | Email | Resend SDK | latest | Transactional email |
 | Image storage | AWS S3 (ap-south-1) | — | Product image CDN |
 | Auth | python-jose + passlib | latest | JWT access/refresh tokens + bcrypt |
-| Validation | Pydantic v2 | 2.x | Request/response schemas, 5–17× faster than v1 |
+| Validation | Pydantic v2 | 2.x | Request/response schemas |
 | Monitoring | Sentry + Prometheus | latest | Error tracking + metrics |
 | Frontend | React | 19.2 | SPA with server-state sync |
 | Build tool | Vite | 8.x | Sub-second HMR, optimised prod builds |
@@ -85,10 +81,7 @@ Razorpay ──── webhook ──► FastAPI /api/v1/orders/webhook
 | Server state | TanStack React Query | 5.x | Cache, background refetch, mutations |
 | Client state | Zustand | 5.x | Auth, cart, notification stores |
 | HTTP client | Axios | 1.x | Auto token refresh interceptor |
-| Icons | Lucide React | 1.x | Consistent icon system |
-| Charts | Recharts | 3.x | Admin revenue charts |
-| Routing | React Router | 7.x | File-based SPA routing |
-| Containerisation | Docker + Compose v2 | — | Local dev parity |
+| Containerisation | Docker + Compose v2 | — | All 5 backend services containerised |
 | CI/CD | GitHub Actions | — | Test + lint + build on every push |
 
 ---
@@ -289,185 +282,9 @@ PyMart/
 │   ├── test_admin.py
 │   ├── test_order_status.py
 │   └── test_websocket.py          # sync WebSocket tests via Starlette TestClient
-├── docker-compose.yml             # postgres:16, redis:7, elasticsearch:8.12, backend, celery_worker
+├── docker-compose.yml             # all 5 services: backend, celery_worker, postgres, redis, elasticsearch
 ├── .env.example
 └── pytest.ini                     # asyncio_mode=auto, pythonpath=. backend
-```
-
----
-
-## Getting Started
-
-### Prerequisites
-
-| Tool | Version | Notes |
-|------|---------|-------|
-| Python | 3.12+ | `python --version` |
-| Node.js | 20+ | `node --version` |
-| Docker Desktop | latest | WSL2 backend on Windows |
-| Git | any | |
-
-You also need accounts for: **Razorpay** (test mode), **Resend** (free tier), and **AWS S3** (free tier). See [Environment Variables](#environment-variables) for each variable.
-
-### Local Development
-
-```bash
-# 1. Clone and configure
-git clone https://github.com/gautam-oss/PyMart.git
-cd PyMart
-cp .env.example .env
-# Edit .env — fill in RAZORPAY, RESEND, AWS keys
-
-# 2. Start infrastructure
-docker compose up -d postgres redis elasticsearch
-
-# 3. Backend
-cd backend
-python -m venv .venv
-
-# Windows (PowerShell):
-.venv\Scripts\Activate.ps1
-# macOS / Linux:
-source .venv/bin/activate
-
-pip install -r requirements.txt
-alembic upgrade head          # run migrations
-python seed.py                # optional: load demo data
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-
-# 4. Celery worker (new terminal, venv active, from backend/)
-celery -A app.tasks.celery_app worker -l info --concurrency 2
-
-# 5. Frontend (new terminal)
-cd frontend
-npm install
-npm run dev                   # http://localhost:5173
-```
-
-API docs: [http://localhost:8000/docs](http://localhost:8000/docs)
-
-**Swagger auth:** `POST /api/v1/auth/login` → copy `access_token` → Authorize → paste in **HTTPBearer** field (not the OAuth2 form).
-
-### Docker (all services)
-
-```bash
-docker compose up -d
-# Backend:  http://localhost:8000
-# Frontend: run npm run dev separately (or add to compose)
-```
-
----
-
-## Environment Variables
-
-Copy `.env.example` to `.env` and fill in the values below.
-
-### Database
-
-| Variable | Required | Description | Where to get |
-|----------|----------|-------------|--------------|
-| `DATABASE_URL` | Yes | `postgresql+asyncpg://user:pass@host:5432/db` | Local: Docker. Prod: Supabase |
-| `REDIS_URL` | Yes | `redis://localhost:6379/0` | Local: Docker. Prod: Upstash |
-| `ELASTICSEARCH_URL` | Yes | `http://localhost:9200` | Local: Docker. Prod: Bonsai.io |
-
-### Auth
-
-| Variable | Required | Description | Where to get |
-|----------|----------|-------------|--------------|
-| `SECRET_KEY` | Yes | 32-byte hex string | `python -c "import secrets; print(secrets.token_hex(32))"` |
-| `ALGORITHM` | No | JWT algorithm (default: `HS256`) | — |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | No | Access token TTL (default: `30`) | — |
-| `REFRESH_TOKEN_EXPIRE_DAYS` | No | Refresh token TTL (default: `7`) | — |
-
-### Payments
-
-| Variable | Required | Description | Where to get |
-|----------|----------|-------------|--------------|
-| `RAZORPAY_KEY_ID` | Yes | `rzp_test_...` | [Razorpay Dashboard](https://dashboard.razorpay.com) → Settings → API Keys |
-| `RAZORPAY_KEY_SECRET` | Yes | Key secret | Same as above |
-
-### Email
-
-| Variable | Required | Description | Where to get |
-|----------|----------|-------------|--------------|
-| `RESEND_API_KEY` | Yes | `re_...` | [Resend Dashboard](https://resend.com) → API Keys |
-| `EMAIL_FROM` | No | Sender address (default: `onboarding@resend.dev`) | Use `onboarding@resend.dev` in test mode |
-| `TEST_EMAIL_OVERRIDE` | No | Redirect all email to this address in dev | Your email — Resend test mode only delivers to account owner |
-
-### Storage
-
-| Variable | Required | Description | Where to get |
-|----------|----------|-------------|--------------|
-| `AWS_ACCESS_KEY_ID` | Yes | IAM access key | AWS Console → IAM → Users → Security credentials |
-| `AWS_SECRET_ACCESS_KEY` | Yes | IAM secret | Same as above |
-| `AWS_REGION` | No | S3 region (default: `ap-south-1`) | — |
-| `S3_BUCKET_NAME` | Yes | Bucket name | Create in AWS S3 console with public-read ACL |
-| `USE_LOCAL_STORAGE` | No | Skip S3 upload in CI/dev (default: `false`) | Set `true` to skip S3 |
-
-### Monitoring & App
-
-| Variable | Required | Description | Where to get |
-|----------|----------|-------------|--------------|
-| `SENTRY_DSN` | No | Error tracking DSN | [Sentry](https://sentry.io) → New Project → FastAPI |
-| `ALLOWED_ORIGINS` | No | CORS origins (default: `http://localhost:5173`) | Add prod frontend URL |
-
----
-
-## Testing
-
-```bash
-# Run all 108 tests (from project root, not backend/)
-backend\.venv\Scripts\python.exe -m pytest tests/ -q
-
-# Verbose with coverage
-backend\.venv\Scripts\python.exe -m pytest tests/ -v --tb=short --cov=app --cov-report=term-missing
-
-# Single module
-backend\.venv\Scripts\python.exe -m pytest tests/test_orders.py -v
-```
-
-**Results:** 108 tests, 0 failures, ~70 seconds on first run (DB setup) / ~15 s on subsequent runs.
-
-| Test file | Coverage |
-|-----------|----------|
-| `test_auth.py` | register, login, rate limiting, refresh, /me |
-| `test_products.py` | CRUD, ownership, image upload, 5MB limit |
-| `test_orders.py` | checkout, stock decrement, webhook, cancel |
-| `test_cart.py` | add, update, remove, stale cleanup, quantity cap |
-| `test_categories.py` | tree, CRUD, active product guard |
-| `test_reviews.py` | create, update, delete, helpful votes, uniqueness |
-| `test_admin.py` | user management, product moderation, stats |
-| `test_order_status.py` | all valid transitions, invalid transition rejection |
-| `test_websocket.py` | valid token connects, invalid/missing token rejected (4008) |
-
-Tests use a separate `pymart_test` PostgreSQL database. Each test truncates all tables + flushes Redis — full isolation, no teardown needed.
-
----
-
-## Deployment
-
-| Service | Platform | Free Tier |
-|---------|----------|-----------|
-| Backend API | [Render](https://render.com) | 750 h/month, sleeps after 15 min |
-| Frontend | [Vercel](https://vercel.com) | Unlimited bandwidth |
-| PostgreSQL | [Supabase](https://supabase.com) | 500 MB database, no sleep |
-| Redis | [Upstash](https://upstash.com) | 10 000 commands/day |
-| Elasticsearch | [Bonsai.io](https://bonsai.io) | Sandbox: 125 MB index |
-| Keep-alive | [UptimeRobot](https://uptimerobot.com) | 50 monitors, 5-min interval |
-
-**Deployment steps** are documented in `PROMPTS.md` (local, gitignored). Summary:
-
-1. Provision Supabase (DB) + Upstash (Redis) + Bonsai.io (ES)
-2. Deploy backend to Render — set all env vars, run `alembic upgrade head`
-3. Deploy Celery worker to Render as a Background Worker
-4. Deploy frontend to Vercel — set `VITE_API_URL` + `VITE_WS_URL`
-5. Update Razorpay webhook URL to `https://your-backend.onrender.com/api/v1/orders/webhook`
-6. Configure UptimeRobot to ping `/health` every 5 minutes
-
-**Frontend env vars for production:**
-```env
-VITE_API_URL=https://your-backend.onrender.com
-VITE_WS_URL=wss://your-backend.onrender.com
 ```
 
 ---
@@ -476,33 +293,33 @@ VITE_WS_URL=wss://your-backend.onrender.com
 
 ### 1. Async FastAPI over Django
 
-FastAPI's native `async/await` support means a single worker process can handle hundreds of concurrent requests without thread-pool overhead. Combined with `asyncpg` (the fastest PostgreSQL driver for Python), the database layer adds zero synchronous blocking. Django REST Framework, while excellent, would require `channels` for WebSocket support and `django-ninja` or similar for comparable API ergonomics. FastAPI also generates OpenAPI 3.0 docs automatically — the Swagger UI works out of the box.
+FastAPI's native `async/await` support means a single worker process can handle hundreds of concurrent requests without thread-pool overhead. Combined with `asyncpg` (the fastest PostgreSQL driver for Python), the database layer adds zero synchronous blocking. FastAPI also generates OpenAPI 3.0 docs automatically — the Swagger UI works out of the box.
 
 ### 2. Redis for the Cart (not PostgreSQL)
 
-Carts are ephemeral, user-scoped, and written far more frequently than they are read in aggregate. A Redis hash per user (`cart:{user_id}`) with a 30-day TTL gives us: O(1) reads/writes (`HGET`/`HSET`), automatic expiry without a cleanup job, and zero load on PostgreSQL for a high-frequency operation. Stale items (sold-out or archived products) are cleaned up lazily on each `GET /cart` — the cart read path calls `get_products_by_ids` and removes any items whose products no longer exist or are inactive.
+Carts are ephemeral, user-scoped, and written far more frequently than they are read in aggregate. A Redis hash per user (`cart:{user_id}`) with a 30-day TTL gives O(1) reads/writes (`HGET`/`HSET`), automatic expiry without a cleanup job, and zero load on PostgreSQL for a high-frequency operation. Stale items (sold-out or archived products) are cleaned up lazily on each `GET /cart`.
 
 ### 3. SELECT FOR UPDATE in Checkout
 
-Concurrent checkouts for the same product without a lock would allow overselling. When two buyers simultaneously check out the last unit, a plain `UPDATE ... SET stock = stock - 1 WHERE stock > 0` might succeed twice at the read-committed isolation level. `SELECT ... FOR UPDATE` in checkout acquires a row-level lock on each product row before decrementing stock, serialising concurrent checkout attempts for the same product. The lock is held only for the duration of the stock update — typically microseconds — so it doesn't create a meaningful bottleneck.
+Concurrent checkouts for the same product without a lock would allow overselling. `SELECT ... FOR UPDATE` in checkout acquires a row-level lock on each product row before decrementing stock, serialising concurrent checkout attempts for the same product. The lock is held only for the duration of the stock update — typically microseconds.
 
 ### 4. Celery for Email Delivery
 
-Sending an email inline with the order webhook response would add 200–500 ms of Resend API latency to every successful payment event. With Celery, the webhook handler queues the email task and returns `{"status": "ok"}` in under 10 ms. The Celery worker picks up the task from Redis, fetches order + user data in a single async database query, and sends the email. Tasks are configured with `max_retries=3, default_retry_delay=60` — if Resend is temporarily unavailable, the task retries automatically.
+Sending an email inline with the order webhook response would add 200–500 ms of Resend API latency to every successful payment event. With Celery, the webhook handler queues the email task and returns `{"status": "ok"}` in under 10 ms. Tasks are configured with `max_retries=3, default_retry_delay=60` for automatic retry on Resend downtime.
 
-**Engine-per-task pattern:** Celery uses prefork workers — each worker is a forked process. The global async SQLAlchemy engine in `database.py` is created at import time and binds its connection pool to the parent process's event loop. When a forked worker calls `asyncio.run()`, Python creates a *new* event loop, and any attempt to reuse the parent's engine connections raises `RuntimeError: got Future attached to a different loop`. The fix is to create a fresh `create_async_engine()` inside each task's `_fetch()` coroutine — scoped to the same event loop that `asyncio.run()` creates — and `await engine.dispose()` immediately after the query.
+**Engine-per-task pattern:** Celery prefork workers are forked processes. The global async SQLAlchemy engine created at import time binds its connection pool to the parent process's event loop. When a forked worker calls `asyncio.run()`, Python creates a new event loop — reusing the parent's engine connections raises `RuntimeError: got Future attached to a different loop`. The fix is a fresh `create_async_engine()` scoped inside each task's coroutine, disposed immediately after the query.
 
 ### 5. Razorpay Webhook Signature Verification
 
-Razorpay signs webhook payloads with an HMAC-SHA256 of the raw request body using the key secret. The `/orders/webhook` endpoint verifies this signature before processing any event. This prevents spoofed webhook calls that could mark orders as paid without actual payment. The raw body bytes are captured before JSON parsing (important — parsing modifies whitespace) and verified via the Razorpay SDK's `verify_webhook_signature` utility. An invalid signature returns 400 immediately; the order is never touched.
+Razorpay signs webhook payloads with HMAC-SHA256 of the raw request body using the key secret. The `/orders/webhook` endpoint verifies this signature before processing any event — preventing spoofed webhook calls that could mark orders as paid without actual payment. The raw body bytes are captured before JSON parsing (parsing modifies whitespace) and verified via the Razorpay SDK's `verify_webhook_signature` utility.
 
 ### 6. SQLAlchemy 2.x `mapped_column()` and `Mapped[T]`
 
-The 2.x ORM API uses Python type annotations directly (`Mapped[Optional[str]]`) rather than the old `Column(String, nullable=True)` form. This means IDEs understand column types without plugins, mypy can type-check ORM queries, and the `DeclarativeBase` approach eliminates the `Base = declarative_base()` metaclass pattern. Every model column is explicitly typed, reducing an entire class of runtime surprises where `None` propagates unexpectedly from nullable columns.
+The 2.x ORM API uses Python type annotations directly (`Mapped[Optional[str]]`) rather than the old `Column(String, nullable=True)` form. IDEs understand column types without plugins, mypy can type-check ORM queries, and the `DeclarativeBase` approach eliminates the `Base = declarative_base()` metaclass pattern.
 
 ### 7. Elasticsearch for Product Search
 
-`ILIKE '%query%'` on a PostgreSQL `products` table works fine at hundreds of products but degrades to sequential scans at scale. Elasticsearch's `multi_match` query provides: relevance scoring (title matches score 3×, tags 2×, description 1×), BM25 ranking, and efficient filter combinations (status=active, stock>0, price range) via the bool/filter DST. Elasticsearch is treated as non-critical: if the service is unavailable, `products.py` falls back to a DB query. This means the platform remains functional during ES downtime — search results are just less relevant.
+`ILIKE '%query%'` on a PostgreSQL `products` table degrades to sequential scans at scale. Elasticsearch's `multi_match` query provides relevance scoring (title matches score 3×, tags 2×, description 1×) and efficient filter combinations via the bool/filter DSL. Elasticsearch is treated as non-critical: if the service is unavailable, the endpoint falls back to a DB query — the platform remains functional during ES downtime.
 
 ---
 
@@ -511,7 +328,7 @@ The 2.x ORM API uses Python type annotations directly (`Mapped[Optional[str]]`) 
 | Measure | Implementation |
 |---------|----------------|
 | Password hashing | bcrypt via passlib (`bcrypt<4.0.0` pinned for compatibility) |
-| Session tokens | JWT access (30 min) + refresh (7 days); tokens are stateless, rotation on refresh |
+| Session tokens | JWT access (30 min) + refresh (7 days); stateless, rotation on refresh |
 | Webhook integrity | Razorpay HMAC-SHA256 signature verified on every incoming webhook |
 | Login rate limiting | Redis counter per IP: 5 attempts / 60 seconds; counter reset on success |
 | SQL injection | SQLAlchemy ORM only — no raw SQL anywhere in the codebase |
@@ -520,7 +337,7 @@ The 2.x ORM API uses Python type annotations directly (`Mapped[Optional[str]]`) 
 | Race condition prevention | `SELECT FOR UPDATE` row lock during stock decrement at checkout |
 | Ownership enforcement | Sellers can only modify their own products; buyers can only cancel their own orders |
 | Soft deletes | Products are archived, not hard-deleted — data is retained for order history |
-| Input validation | Pydantic v2 validates every request body; `@field_validator` for custom rules (e.g., 6-digit pincode) |
+| Input validation | Pydantic v2 validates every request body; `@field_validator` for custom rules |
 | Image validation | Content-type allow-list (JPEG/PNG/WebP); 5 MB size limit checked before S3 upload |
 | Inactive account guard | `get_current_active_user` dependency rejects `is_active=False` users on every authenticated route |
 
@@ -537,7 +354,6 @@ push / PR
     │       services: postgres:16, redis:7
     │       python: 3.12
     │       steps: pip install → pytest tests/ --cov=app
-    │       env: all secrets injected as job env vars
     │       USE_LOCAL_STORAGE=true (skips S3)
     │
     ├─── backend-lint (ubuntu-latest)
@@ -548,34 +364,7 @@ push / PR
     └─── frontend-build (ubuntu-latest)
             node: 20
             steps: npm ci → tsc --noEmit → npm run build
-            Note: unused TypeScript declarations cause build failure
 ```
-
-Secrets required in GitHub repo Settings → Secrets → Actions: `DATABASE_URL`, `REDIS_URL`, `SECRET_KEY`, `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RESEND_API_KEY`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `S3_BUCKET_NAME`.
-
-For CI, `USE_LOCAL_STORAGE=true` is hardcoded in the workflow — no S3 access required in tests.
-
----
-
-## Contributing
-
-```bash
-# Fork the repo, then:
-git checkout -b feat/your-feature-name
-# Make changes
-git commit -m "feat: description of what was added"
-git push origin feat/your-feature-name
-# Open a PR against main
-```
-
-**Branch naming:** `feat/`, `fix/`, `docs/`, `chore/`, `refactor/`
-
-**Commit convention:** [Conventional Commits](https://www.conventionalcommits.org) — `feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`
-
-**Before opening a PR:**
-- `pytest tests/ -q` — all 108 tests must pass
-- `ruff check backend/app --select E,W,F --ignore E501` — zero lint errors
-- `npx tsc --noEmit` (from `frontend/`) — zero TypeScript errors
 
 ---
 
