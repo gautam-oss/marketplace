@@ -11,6 +11,25 @@
 
 ---
 
+## Running Locally
+
+```bash
+# Start all backend services (API, Celery worker, PostgreSQL, Redis, Elasticsearch)
+docker compose up -d
+
+# Frontend dev server (separate terminal, from frontend/)
+npm install
+npm run dev
+```
+
+| URL | Service |
+|-----|---------|
+| http://localhost:8000 | FastAPI (REST + WebSocket) |
+| http://localhost:8000/docs | Swagger UI |
+| http://localhost:5173 | React frontend |
+
+---
+
 ## Overview
 
 PyMart is a multi-category e-commerce platform designed for India. Buyers discover products through full-text search, add them to a persistent cart, and pay via Razorpay (UPI, cards, net banking, wallets). Sellers manage their listings from a dedicated dashboard and receive real-time WebSocket notifications when an order is placed. Admins moderate the platform through a built-in panel covering users, products, orders, and reviews.
